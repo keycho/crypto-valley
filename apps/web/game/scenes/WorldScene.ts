@@ -1,5 +1,7 @@
+import { CHARACTER_SHEETS, type Dir, type PlayerDto, type SnapEntry } from "@crypto-valley/shared";
 import Phaser from "phaser";
 
+import { ensureAvatarAnims, IDLE_FRAME, setAvatar } from "../avatar";
 import { gameBus } from "../bus";
 import {
   CLOCK_START_MINUTES,
@@ -11,19 +13,18 @@ import {
 } from "../constants";
 import { ambientColorAt, LIGHT_REGISTRY, type LightKind, nightnessAt } from "../dayCurve";
 import { FarmController } from "../FarmController";
+import { RemotePlayer } from "../RemotePlayer";
+import { CvNet } from "../systems/net";
 import { useFarmStore, type Zone } from "../../stores/farm";
+import { useMpStore } from "../../stores/mp";
 
-type Dir = "right" | "up" | "left" | "down";
+const WS_URL = process.env.NEXT_PUBLIC_GAME_WS ?? "ws://localhost:8080";
 
 interface Warp {
   tx: number;
   ty: number;
   to: Zone;
 }
-
-/** Frame ranges in the LimeZu sheets (order: right, up, left, down). */
-const RUN_START: Record<Dir, number> = { right: 0, up: 6, left: 12, down: 18 };
-const IDLE_FRAME: Record<Dir, number> = { right: 0, up: 1, left: 2, down: 3 };
 
 interface ManagedLight {
   light: Phaser.GameObjects.Light;
@@ -52,6 +53,12 @@ export class WorldScene extends Phaser.Scene {
   private tileset!: Phaser.Tilemaps.Tileset;
   private warps: Warp[] = [];
   private warpLocked = true; // released once the player steps off the entry warp
+  private sheet = "adam";
+  private moving = false;
+  private prevMoving = false;
+  private net?: CvNet;
+  private remotes = new Map<string, RemotePlayer>();
+  private onChatSend = ({ msg }: { msg: string }): void => this.net?.sendChat(msg);
 
   constructor() {
     super("world");
@@ -76,6 +83,10 @@ export class WorldScene extends Phaser.Scene {
     this.farm = undefined;
     this.warps = [];
     this.warpLocked = true;
+    this.disconnectNet();
+    this.remotes = new Map();
+    this.sheet = useMpStore.getState().appearance.sheet;
+    this.prevMoving = false;
 
     const map = this.make.tilemap({ key: this.zone });
     const tiles = map.addTilesetImage("town_tiles", "town_tiles");
@@ -114,12 +125,14 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(2);
     }
 
+    for (const s of CHARACTER_SHEETS) ensureAvatarAnims(this, s);
+
     // ---- player -------------------------------------------------------------
     const spawn = map.getObjectLayer("objects")?.objects.find((o) => o.name === "spawn");
     this.player = this.physics.add.sprite(
       spawn?.x ?? map.widthInPixels / 2,
       spawn?.y ?? map.heightInPixels / 2,
-      "adam_idle",
+      `${this.sheet}_idle`,
       IDLE_FRAME.down,
     );
     this.player.body!.setSize(12, 8);
@@ -131,19 +144,6 @@ export class WorldScene extends Phaser.Scene {
       .setAlpha(0.45);
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.physics.add.collider(this.player, collision);
-
-    for (const dir of ["right", "up", "left", "down"] as const) {
-      if (this.anims.exists(`walk-${dir}`)) continue; // anims persist across scene.restart
-      this.anims.create({
-        key: `walk-${dir}`,
-        frames: this.anims.generateFrameNumbers("adam_run", {
-          start: RUN_START[dir],
-          end: RUN_START[dir] + 5,
-        }),
-        frameRate: 10,
-        repeat: -1,
-      });
-    }
 
     // ---- the plaza terminal (the town's one cold ghost, art bible Law 1) ----
     const termMarker = map
@@ -217,7 +217,73 @@ export class WorldScene extends Phaser.Scene {
       );
     }
 
+    // ---- shared-town multiplayer (town zone only) ----------------------------
+    const mp = useMpStore.getState();
+    if (this.zone === "town" && mp.entered) {
+      const cid = useFarmStore.getState().characterId;
+      if (cid) {
+        this.net = new CvNet(WS_URL, {
+          onWelcome: (youId, players) => {
+            for (const p of players) if (p.id !== youId) this.addRemote(p);
+            this.refreshOnline();
+          },
+          onJoined: (p) => {
+            this.addRemote(p);
+            this.refreshOnline();
+          },
+          onLeft: (id) => {
+            this.remotes.get(id)?.destroy();
+            this.remotes.delete(id);
+            this.refreshOnline();
+          },
+          onSnapshot: (entries) => {
+            const now = performance.now();
+            for (const e of entries) {
+              if (e.id === this.net?.youId) this.reconcileSelf(e);
+              else this.remotes.get(e.id)?.push(e, now);
+            }
+          },
+          onChat: (_fromId, name, msg) => useMpStore.getState().pushChat(name, msg),
+        });
+        this.net.connect(cid, mp.name, mp.appearance);
+        if (process.env.NODE_ENV !== "production") {
+          (window as unknown as { __cvNet?: CvNet }).__cvNet = this.net;
+        }
+        gameBus.on("chatSend", this.onChatSend);
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+          gameBus.off("chatSend", this.onChatSend);
+          this.disconnectNet();
+        });
+      }
+    }
+
     gameBus.emit("clock", { minutesOfDay: this.minutesOfDay });
+  }
+
+  private addRemote(p: PlayerDto): void {
+    if (this.remotes.has(p.id)) return;
+    const r = new RemotePlayer(this, p.id, p.name, p.appearance.sheet, p.x, p.y, this.lightingOn);
+    this.remotes.set(p.id, r);
+  }
+
+  private refreshOnline(): void {
+    useMpStore.getState().setOnline(this.remotes.size + 1);
+  }
+
+  /** Snap to the server's authoritative position only when prediction diverges. */
+  private reconcileSelf(e: SnapEntry): void {
+    const dx = this.player.x - e.x;
+    const dy = this.player.y - e.y;
+    if (dx * dx + dy * dy > 24 * 24) this.player.setPosition(e.x, e.y);
+  }
+
+  private disconnectNet(): void {
+    if (!this.net) return;
+    this.net.disconnect();
+    this.net = undefined;
+    for (const r of this.remotes.values()) r.destroy();
+    this.remotes.clear();
+    useMpStore.getState().setOnline(0);
   }
 
   override update(_time: number, delta: number): void {
@@ -228,7 +294,19 @@ export class WorldScene extends Phaser.Scene {
     this.updateTerminal(delta);
     this.updateFps(delta);
     this.farm?.update(delta);
+    this.updateNet();
     this.checkWarps();
+  }
+
+  /** Send coalesced move intents + interpolate remote players. */
+  private updateNet(): void {
+    if (!this.net) return;
+    const dir = this.facing;
+    if (this.moving) this.net.sendMove(this.player.x, this.player.y, dir, true);
+    else if (this.prevMoving) this.net.sendMove(this.player.x, this.player.y, dir, false, true);
+    this.prevMoving = this.moving;
+    const now = performance.now();
+    for (const r of this.remotes.values()) r.interpolate(now);
   }
 
   /** Switch zones when the player steps onto a warp tile. */
@@ -243,6 +321,8 @@ export class WorldScene extends Phaser.Scene {
     if (this.warpLocked) return;
     this.warpLocked = true;
     this.farm = undefined;
+    gameBus.off("chatSend", this.onChatSend);
+    this.disconnectNet();
     this.scene.restart({ zone: on.to });
   }
 
@@ -315,10 +395,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updateMovement(): void {
-    const left = this.cursors.left.isDown || this.wasd.A.isDown;
-    const right = this.cursors.right.isDown || this.wasd.D.isDown;
-    const up = this.cursors.up.isDown || this.wasd.W.isDown;
-    const down = this.cursors.down.isDown || this.wasd.S.isDown;
+    // Movement keys are ignored while the chat input is focused.
+    const typing = useMpStore.getState().typing;
+    const left = !typing && (this.cursors.left.isDown || this.wasd.A.isDown);
+    const right = !typing && (this.cursors.right.isDown || this.wasd.D.isDown);
+    const up = !typing && (this.cursors.up.isDown || this.wasd.W.isDown);
+    const down = !typing && (this.cursors.down.isDown || this.wasd.S.isDown);
 
     const v = new Phaser.Math.Vector2(
       (right ? 1 : 0) - (left ? 1 : 0),
@@ -327,14 +409,12 @@ export class WorldScene extends Phaser.Scene {
     if (v.lengthSq() > 0) v.normalize().scale(PLAYER_SPEED);
     this.player.setVelocity(v.x, v.y);
 
-    if (v.lengthSq() > 0) {
+    this.moving = v.lengthSq() > 0;
+    if (this.moving) {
       if (Math.abs(v.x) >= Math.abs(v.y)) this.facing = v.x > 0 ? "right" : "left";
       else this.facing = v.y > 0 ? "down" : "up";
-      this.player.anims.play(`walk-${this.facing}`, true);
-    } else {
-      this.player.anims.stop();
-      this.player.setTexture("adam_idle", IDLE_FRAME[this.facing]);
     }
+    setAvatar(this.player, this.sheet, this.facing, this.moving);
 
     // y-sort actors between ground_detail (1) and the static above layer.
     this.player.setDepth(this.player.y);

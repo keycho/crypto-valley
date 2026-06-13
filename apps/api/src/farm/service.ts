@@ -114,6 +114,55 @@ export async function bootstrap(): Promise<{ characterId: string }> {
   });
 }
 
+/**
+ * Creates a fresh account + character (+ farm + starter kit) for a new player,
+ * persisting their chosen display name and appearance. Returns the character id,
+ * which doubles as the multiplayer token identity (dev:<characterId>).
+ */
+export async function createCharacter(
+  name: string,
+  appearance: unknown,
+): Promise<{ characterId: string }> {
+  const display = name.trim().slice(0, 16) || "Player";
+  return db().transaction(async (tx) => {
+    for (const it of ITEMS) {
+      await tx
+        .insert(itemDefs)
+        .values({
+          id: it.id,
+          category: it.category,
+          stackMax: it.stackMax,
+          baseValue: it.baseValue,
+          tradeable: it.tradeable,
+          mintable: it.mintable,
+          meta: it.meta,
+        })
+        .onConflictDoNothing();
+    }
+    const accountId = uuidv7();
+    await tx.insert(accounts).values({ id: accountId, email: `${accountId}@dev.local` });
+    const characterId = uuidv7();
+    // characters.name is UNIQUE; the in-game display name comes from the join
+    // message, so the stored name is suffixed with the id's RANDOM tail (UUIDv7
+    // heads are time-ordered and would collide) to guarantee a unique row.
+    const storedName = `${display.slice(0, 9)}_${characterId.replace(/-/g, "").slice(-6)}`;
+    await tx.insert(characters).values({
+      id: characterId,
+      accountId,
+      name: storedName,
+      appearance: appearance ?? {},
+      shards: 500,
+    });
+    await tx.insert(farms).values({ id: uuidv7(), ownerId: characterId, name: "Home Plot" });
+    await moveItems(tx, [
+      { characterId, itemId: "hoe_t1", qty: 1 },
+      { characterId, itemId: "watering_can_t1", qty: 1 },
+      { characterId, itemId: "seed_bitberry", qty: 20 },
+    ]);
+    return { characterId };
+  });
+}
+
 // ----------------------------------------------------------------- read state
 export async function getFarmState(characterId: string, now: number): Promise<FarmState> {
   const database = db();

@@ -3,9 +3,13 @@ import type { ActionResult, FarmState } from "@crypto-valley/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
-import { act, ActionError, bootstrap, getFarmState } from "./service";
+import { act, ActionError, bootstrap, createCharacter, getFarmState } from "./service";
 
 const StateQuerySchema = z.object({ characterId: z.string().uuid() });
+const CreateCharacterSchema = z.object({
+  name: z.string().min(1).max(16),
+  appearance: z.object({ sheet: z.string().max(32) }),
+});
 
 const errMsg = (e: unknown): string =>
   e instanceof ActionError ? e.message : "INTERNAL";
@@ -13,6 +17,13 @@ const errMsg = (e: unknown): string =>
 export async function farmRoutes(app: FastifyInstance): Promise<void> {
   // Dev-only: ensure the single-player character exists (no auth yet, pre-P4).
   app.post("/dev/bootstrap", async () => bootstrap());
+
+  // Character creation: one fresh character per player (persists name + look).
+  app.post("/dev/character", async (req, reply) => {
+    const parsed = CreateCharacterSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ ok: false, error: "BAD_REQUEST" });
+    return createCharacter(parsed.data.name, parsed.data.appearance);
+  });
 
   app.get("/farm/state", async (req, reply): Promise<FarmState | ActionResult> => {
     const q = StateQuerySchema.safeParse(req.query);

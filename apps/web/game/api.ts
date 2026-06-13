@@ -9,6 +9,20 @@ export async function bootstrap(): Promise<string> {
   return j.characterId;
 }
 
+/** Create a fresh player character (persists name + appearance); returns its id. */
+export async function createCharacter(
+  name: string,
+  appearance: { sheet: string },
+): Promise<string> {
+  const r = await fetch(`${BASE}/dev/character`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, appearance }),
+  });
+  const j = (await r.json()) as { characterId: string };
+  return j.characterId;
+}
+
 export async function fetchState(characterId: string): Promise<FarmState> {
   const r = await fetch(`${BASE}/farm/state?characterId=${characterId}`);
   return (await r.json()) as FarmState;

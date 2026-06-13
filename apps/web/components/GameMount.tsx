@@ -3,53 +3,48 @@
 import { useEffect, useRef } from "react";
 import type Phaser from "phaser";
 
-import { bootstrap, fetchState } from "../game/api";
+import { createCharacter } from "../game/api";
+import { CharacterCreate } from "../hud/CharacterCreate";
 import { Hud } from "../hud/Hud";
 import { useFarmStore } from "../stores/farm";
+import { useMpStore } from "../stores/mp";
 
 /**
- * Mounts the Phaser game. This component is loaded via
- * next/dynamic({ ssr: false }) so it only ever runs in the browser, and Phaser
- * itself is imported lazily inside the effect to keep it out of the SSR bundle.
+ * Mounts the Phaser game once the player has created a character and entered the
+ * world. Loaded via next/dynamic({ ssr: false }), so it only runs in the browser
+ * and Phaser is imported lazily inside the effect.
  */
 export default function GameMount() {
+  const entered = useMpStore((s) => s.entered);
   const parentRef = useRef<HTMLDivElement>(null);
 
+  // Dev handles for headless tests + a one-call entry helper.
   useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const w = window as unknown as Record<string, unknown>;
+    w.__cvFarmStore = useFarmStore;
+    w.__cvMpStore = useMpStore;
+    w.__cvEnter = async (name: string, sheet: string): Promise<void> => {
+      const id = await createCharacter(name, { sheet });
+      useFarmStore.getState().patch({ characterId: id });
+      useMpStore.getState().enter(name, { sheet: sheet as never });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!entered) return;
     let game: Phaser.Game | undefined;
     let cancelled = false;
-
     void import("../game/main").then(({ createGame }) => {
-      if (!cancelled && parentRef.current) {
-        game = createGame(parentRef.current);
-      }
+      if (!cancelled && parentRef.current) game = createGame(parentRef.current);
     });
-
     return () => {
       cancelled = true;
       game?.destroy(true);
     };
-  }, []);
+  }, [entered]);
 
-  // Bootstrap the single-player character + initial state (no auth yet, pre-P4).
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "production") {
-      (window as unknown as { __cvFarmStore?: typeof useFarmStore }).__cvFarmStore = useFarmStore;
-    }
-    let alive = true;
-    void (async () => {
-      try {
-        const id = await bootstrap();
-        const st = await fetchState(id);
-        if (alive) useFarmStore.getState().patch({ characterId: id, farm: st });
-      } catch {
-        // API offline: the town is still walkable; farming just won't respond.
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  if (!entered) return <CharacterCreate />;
 
   return (
     <main style={{ position: "relative", width: "100vw", height: "100vh" }}>

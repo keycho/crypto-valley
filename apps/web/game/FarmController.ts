@@ -6,6 +6,7 @@ import { act, fetchState } from "./api";
 import { TILE_SIZE } from "./constants";
 import { HOTBAR } from "./hotbar";
 import { useFarmStore } from "../stores/farm";
+import { useMpStore } from "../stores/mp";
 
 const DIR: Record<string, [number, number]> = {
   right: [1, 0],
@@ -65,7 +66,7 @@ export class FarmController {
   }
 
   private async use(): Promise<void> {
-    if (this.busy) return;
+    if (this.busy || useMpStore.getState().typing) return;
     const { characterId, selectedSlot, farm } = useFarmStore.getState();
     if (!characterId) return;
     const { tx: px, ty: py, facing } = this.getActor();

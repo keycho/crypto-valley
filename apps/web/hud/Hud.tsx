@@ -1,11 +1,13 @@
 "use client";
 
+import { Chat } from "./Chat";
 import { Clock } from "./Clock";
 import { EnergyBar } from "./EnergyBar";
 import { Fps } from "./Fps";
 import { Hotbar } from "./Hotbar";
 import { HudBridge } from "./HudBridge";
 import { Inventory } from "./Inventory";
+import { Online } from "./Online";
 import { Toast } from "./Toast";
 import { useHotbarKeys } from "./useHotbarKeys";
 
@@ -28,15 +30,17 @@ export function Hud() {
       />
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none", fontSize: 14 }}>
         <HudBridge />
-        <div style={{ position: "absolute", top: 12, left: 12 }}>
+        <div style={{ position: "absolute", top: 12, left: 12, display: "flex", flexDirection: "column", gap: 8 }}>
           <Clock />
+          <Online />
+          <EnergyBar />
         </div>
         <div style={{ position: "absolute", top: 12, right: 12 }}>
           <Fps />
         </div>
         <Toast />
         <div style={{ position: "absolute", bottom: 12, left: 12 }}>
-          <EnergyBar />
+          <Chat />
         </div>
         <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)" }}>
           <Hotbar />
@@ -49,9 +53,10 @@ export function Hud() {
             color: "#f2e8d5",
             fontSize: 11,
             opacity: 0.6,
+            textAlign: "right",
           }}
         >
-          Space: use · 1–3: tool · I: bag
+          WASD move · Space use · 1–3 tool · Enter chat
         </div>
         <Inventory />
       </div>

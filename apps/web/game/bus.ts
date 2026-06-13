@@ -10,6 +10,8 @@ export type GameEvents = {
   clock: { minutesOfDay: number };
   /** Renderer frames-per-second sample, ~2x per second. */
   fps: { fps: number };
+  /** React chat input -> game server (relayed to the town). */
+  chatSend: { msg: string };
 };
 
 export const gameBus = mitt<GameEvents>();

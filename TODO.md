@@ -56,16 +56,34 @@
   `000→444` on the fast clock, harvest → +6 Bitberry / +36 XP, energy spent,
   out-of-range + not-ready rejected. Screenshots in docs/screenshots/farm-*.png
 
+## Done — P4: Shared-town multiplayer
+
+- packages/shared: zod + msgpack net protocol (join/move/chat/emote ->
+  welcome/snapshot/playerJoined/playerLeft/chat/emote/error), PROTOCOL_VERSION
+  gating; shared Tiled collision loader + `isMoveLegal` (client + server validate
+  identically). Round-trip + collision unit tests.
+- apps/game-server: one shared "town" room, 10Hz snapshots, speed-cap + collision
+  validation vs town.tmj, join/leave broadcasts, dev token `?token=dev:<id>`,
+  malformed-message resilient.
+- apps/api: `POST /dev/character` (persists name + appearance, one fresh
+  character per player).
+- apps/web: character-creation screen (name + 4 LimeZu looks), `systems/net.ts`,
+  `RemotePlayer` (interpolated 100ms behind, name labels), self prediction +
+  snap reconciliation, zone chat (Enter/Esc, typing gates movement), "N online".
+  Farm (P3) preserved — warping to the farm disconnects from town.
+- Verified with 3 headless tabs: see each other move smoothly with labels, chat
+  round-trips, teleport rejected + corrected, typing doesn't move, garbage
+  doesn't crash, disconnect despawns in 1s, farming still works.
+  Screenshot: docs/screenshots/town-multiplayer.png
+
 ## Next session
 
-- [ ] **P4 — multiplayer presence (docs/crypto-valley-build-readiness.md §4 P3)**
+- [ ] **P5 — land claiming + house building**
 
-  WS protocol (hello/move/snap/chat subset) in `packages/shared` with Zod;
-  game-server single Town room at 10 Hz validating speed+collision against the
-  same `.tmj`; client connects with a dev token, sends move intents ≤15/s,
-  interpolates remote players 100 ms back with local prediction + snap
-  reconciliation; zone-local chat. Acceptance: two browsers see each other move;
-  a teleport-hack message is rejected.
+  Per-player plots in/around the shared town: claim a plot, place + persist house
+  exterior/furniture (server-authoritative via packages/db, shared land visible
+  to all). Real auth (signed tokens) replaces the dev token. Builds on the P4
+  netcode + the P3 tile/structure schema.
 
   WS protocol (hello/move/snap/chat subset) in `packages/shared` with Zod schemas.
   game-server: single Town room, 10 Hz tick, speed+collision validation against the

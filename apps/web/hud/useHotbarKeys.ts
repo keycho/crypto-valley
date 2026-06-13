@@ -4,6 +4,7 @@ import { useEffect } from "react";
 
 import { HOTBAR } from "../game/hotbar";
 import { useFarmStore } from "../stores/farm";
+import { useMpStore } from "../stores/mp";
 
 /**
  * Hotbar number keys (1..N) + inventory toggle (I), handled in React so UI input
@@ -12,7 +13,7 @@ import { useFarmStore } from "../stores/farm";
 export function useHotbarKeys(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.repeat) return;
+      if (e.repeat || useMpStore.getState().typing) return;
       const n = Number(e.key);
       if (Number.isInteger(n) && n >= 1 && n <= HOTBAR.length) {
         useFarmStore.getState().patch({ selectedSlot: n - 1 });
