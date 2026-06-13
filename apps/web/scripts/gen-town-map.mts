@@ -150,11 +150,32 @@ interface Marker {
   x: number;
   y: number;
   kind?: string;
+  /** Rect markers (e.g. shadows) carry a size; point markers leave these unset. */
+  w?: number;
+  h?: number;
 }
 const markers: Marker[] = [];
 const lights: Marker[] = [];
 let markerId = 1;
 const px = (t: number): number => t * TILE;
+
+/**
+ * FIX 1 (depth pass): every stamped object registers a ground shadow — a soft
+ * dark ellipse rendered by WorldScene just under the actors. Center sits at the
+ * object's base line, nudged down so most of the blob spills onto the ground
+ * (the overlap on the sprite's bottom edge reads as a contact shadow).
+ */
+function emitShadow(tx: number, ty: number, wTiles: number, hPx: number, label: string): void {
+  markers.push({
+    id: markerId++,
+    name: `shadow_${label}`,
+    type: "shadow",
+    x: px(tx) + (wTiles * TILE) / 2, // center x
+    y: px(ty) + 3, // base line + nudge
+    w: Math.round(wTiles * TILE * 0.96),
+    h: hPx,
+  });
+}
 
 /** Building: full-footprint collision; roof rows render on `above`, the rest on
  *  ground_detail; a warm window light is registered at the front. */
@@ -181,6 +202,7 @@ function stampBuilding(name: string, tx: number, ty: number): void {
     y: px(ty + h - 2),
     kind: "window",
   });
+  emitShadow(tx, ty + h, w, 14, `${name}_${tx}_${ty}`);
 }
 
 /** Tree: trunk row collides; the canopy renders on `above` (player walks behind). */
@@ -199,6 +221,7 @@ function stampTree(name: string, tx: number, ty: number): void {
       }
     }
   }
+  emitShadow(tx, ty + h, w, 10, `${name}_${tx}_${ty}`);
 }
 
 /** Small street prop: bottom row collides; top row (if tall) renders on `above`. */
@@ -215,6 +238,7 @@ function stampProp(name: string, tx: number, ty: number): void {
       if (dy === h - 1) collision[at(x, y)] = MARK;
     }
   }
+  emitShadow(tx, ty + h, w, 7, `${name}_${tx}_${ty}`);
 }
 
 // Buildings lining the streets (fronts face south onto the plaza / streets).
@@ -373,7 +397,10 @@ const objectLayer = (name: string, objs: Marker[]) => ({
     type: o.type,
     x: o.x,
     y: o.y,
-    point: true,
+    // Sized markers (shadows) are rects; everything else is a point.
+    ...(o.w !== undefined && o.h !== undefined
+      ? { width: o.w, height: o.h }
+      : { point: true }),
     visible: true,
     rotation: 0,
     properties: o.kind ? [{ name: "kind", type: "string", value: o.kind }] : [],
