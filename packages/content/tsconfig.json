@@ -1,0 +1,4 @@
+{
+  "extends": "@crypto-valley/config/tsconfig.base.json",
+  "include": ["src"]
+}

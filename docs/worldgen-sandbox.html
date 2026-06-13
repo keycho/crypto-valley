@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Crypto Valley — World Generator Sandbox</title>
+<style>
+  :root { --bg:#0d0f14; --panel:#151823; --line:#262b3a; --txt:#cfd6e4; --dim:#7d869c; --acc:#7c5cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:13px/1.45 ui-monospace,'JetBrains Mono',Menlo,monospace; display:flex; height:100vh; overflow:hidden; }
+  #side { width:300px; min-width:300px; background:var(--panel); border-right:1px solid var(--line); padding:14px; overflow-y:auto; }
+  h1 { font-size:14px; margin:0 0 2px; color:#fff; letter-spacing:.5px; }
+  .sub { color:var(--dim); font-size:11px; margin-bottom:14px; }
+  label.row { display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer; user-select:none; }
+  .group { border-top:1px solid var(--line); margin-top:12px; padding-top:10px; }
+  .group h2 { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--dim); margin:0 0 6px; }
+  input[type=text] { width:100%; background:#0a0c11; border:1px solid var(--line); color:#fff; padding:7px 9px; border-radius:6px; font:inherit; }
+  button { background:var(--acc); border:0; color:#fff; padding:7px 12px; border-radius:6px; font:inherit; cursor:pointer; margin-top:8px; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--txt); }
+  #legend div { display:flex; align-items:center; gap:8px; padding:2px 0; color:var(--dim); }
+  .sw { width:12px; height:12px; border-radius:3px; display:inline-block; }
+  #main { flex:1; position:relative; }
+  canvas { display:block; width:100%; height:100%; image-rendering:pixelated; cursor:grab; }
+  canvas.dragging { cursor:grabbing; }
+  #hud { position:absolute; left:12px; bottom:12px; background:rgba(13,15,20,.85); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:12px; pointer-events:none; min-width:260px; }
+  #hud b { color:#fff; }
+  #perf { position:absolute; right:12px; top:12px; background:rgba(13,15,20,.85); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:11px; color:var(--dim); }
+  #histPanel { font-size:11px; color:var(--dim); max-height:220px; overflow-y:auto; line-height:1.6; }
+  #histPanel b { color:var(--txt); }
+  .hint { color:var(--dim); font-size:11px; margin-top:8px; }
+</style>
+</head>
+<body>
+<div id="side">
+  <h1>WORLD GENERATOR SANDBOX</h1>
+  <div class="sub">crypto valley · dev tool · no phaser, no gameplay</div>
+
+  <div class="group">
+    <h2>Seed</h2>
+    <input type="text" id="seed" value="genesis-001" spellcheck="false">
+    <button id="randomize">⚂ Randomize</button>
+    <button id="regen" class="ghost">↻ Regenerate</button>
+  </div>
+
+  <div class="group">
+    <h2>World size preset</h2>
+    <select id="preset" style="width:100%;background:#0a0c11;border:1px solid var(--line);color:#fff;padding:7px 9px;border-radius:6px;font:inherit">
+      <option value="stardew" selected>Stardew-size — FINAL launch shape (Static at 256)</option>
+      <option value="launch">Big-launch (deprecated) — Static at 512</option>
+      <option value="growth">Growth — ~1k players (Static at 1280)</option>
+      <option value="full">Full — open frontier (3200+)</option>
+    </select>
+    <div class="hint" id="presetInfo"></div>
+  </div>
+
+  <div class="group">
+    <h2>Overlays</h2>
+    <label class="row"><input type="checkbox" id="ovCorr"> Corruption heatmap</label>
+    <label class="row"><input type="checkbox" id="ovElev"> Elevation (grayscale)</label>
+    <label class="row"><input type="checkbox" id="ovRegions"> Region borders (Voronoi)</label>
+    <label class="row"><input type="checkbox" id="ovHistory"> History: org territories</label>
+    <label class="row"><input type="checkbox" id="ovLandmarks" checked> Landmarks (10)</label>
+    <label class="row"><input type="checkbox" id="ovRings" checked> Ring boundaries</label>
+    <label class="row"><input type="checkbox" id="ovChunks"> Chunk grid (64×64, zoom in)</label>
+  </div>
+
+  <div class="group">
+    <h2>Biome legend</h2>
+    <div id="legend"></div>
+  </div>
+
+  <div class="group">
+    <h2>History graph (this seed)</h2>
+    <div id="histPanel"></div>
+  </div>
+
+  <div class="hint">drag to pan · scroll to zoom · hover to inspect</div>
+</div>
+
+<div id="main">
+  <canvas id="cv"></canvas>
+  <div id="perf"></div>
+  <div id="hud">hover the map…</div>
+</div>
+
+<script>
+// ============================================================
+// CRYPTO VALLEY — worldgen core (sandbox edition)
+// Pure, deterministic functions. No DOM, no Phaser, no IO.
+// This file is the prototype of packages/worldgen.
+// ============================================================
+
+// ---------- deterministic hashing & PRNG ----------
+function cyrb128(str) {
+  let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
+  for (let i = 0, k; i < str.length; i++) {
+    k = str.charCodeAt(i);
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+  }
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+  return [(h1 ^ h2 ^ h3 ^ h4) >>> 0, (h2 ^ h1) >>> 0, (h3 ^ h1) >>> 0, (h4 ^ h1) >>> 0];
+}
+function sfc32(a, b, c, d) {
+  return function () {
+    a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
+    let t = (a + b) | 0;
+    a = b ^ (b >>> 9);
+    b = (c + (c << 3)) | 0;
+    c = (c << 21) | (c >>> 11);
+    d = (d + 1) | 0;
+    t = (t + d) | 0;
+    c = (c + t) | 0;
+    return (t >>> 0) / 4294967296;
+  };
+}
+// hierarchical seed: rng('worldSeed','elev') etc.
+function rng(...parts) { const s = cyrb128(parts.join(':')); return sfc32(s[0], s[1], s[2], s[3]); }
+function seedInt(...parts) { return cyrb128(parts.join(':'))[0]; }
+
+// ---------- value noise + fBm ----------
+function makeNoise2D(si) {
+  function h(x, y) {
+    let n = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(si | 0, 2246822519);
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    n ^= n >>> 16;
+    return (n >>> 0) / 4294967295;
+  }
+  return function (x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+}
+function fbm(noise, x, y, oct, lac, gain) {
+  let amp = 0.5, f = 1, s = 0, norm = 0;
+  for (let i = 0; i < oct; i++) { s += amp * noise(x * f, y * f); norm += amp; f *= lac; amp *= gain; }
+  return s / norm;
+}
+
+// ---------- world constants (all tunable in sandbox) ----------
+const TUNE = {
+  CORE_RADIUS: 192,            // tiles; handcrafted stamp zone
+  RINGS: [700, 1600, 3200],    // outskirts | frontier | deep ruinlands | the silence
+  ELEV_FREQ: 1 / 640,
+  CORR_FREQ: 1 / 420,
+  WATER: 0.34, COAST: 0.395, PEAKS: 0.645,
+  ORACLE_CORR: 0.84,
+  REGION_CELL: 384,            // voronoi jittered-grid cell, tiles (= 24 chunks)
+};
+
+const BIOMES = {
+  core:       { name: 'Core (handcrafted)', color: [236, 224, 200] },
+  water:      { name: 'Water',              color: [38, 70, 110] },
+  coastal:    { name: 'Coastal',            color: [202, 185, 130] },
+  forest:     { name: 'Forest',             color: [52, 110, 64] },
+  mountains:  { name: 'Mountains',          color: [128, 124, 132] },
+  wastelands: { name: 'Wastelands',         color: [148, 112, 84] },
+  ruins_city: { name: 'Ancient City Ruins', color: [96, 96, 118] },
+  oracle:     { name: 'Oracle Zone',        color: [120, 60, 160] },
+};
+
+// ---------- field + biome sampling ----------
+function makeWorld(worldSeed) {
+  const elevN = makeNoise2D(seedInt(worldSeed, 'elev'));
+  const corrN = makeNoise2D(seedInt(worldSeed, 'corr'));
+  const warpN = makeNoise2D(seedInt(worldSeed, 'warp'));
+
+  function elev(x, y) {
+    // light domain warp so coastlines aren't blobby
+    const w = fbm(warpN, x * TUNE.ELEV_FREQ * 2, y * TUNE.ELEV_FREQ * 2, 2, 2, 0.5) - 0.5;
+    return fbm(elevN, (x + w * 220) * TUNE.ELEV_FREQ, (y + w * 220) * TUNE.ELEV_FREQ, 5, 2, 0.5);
+  }
+  function corr(x, y) {
+    const base = fbm(corrN, x * TUNE.CORR_FREQ, y * TUNE.CORR_FREQ, 4, 2, 0.5);
+    // corruption intensifies with distance: the deep world died harder
+    const d = Math.hypot(x, y);
+    const ringBoost = Math.min(0.14, d / (TUNE.RINGS[2] * 6));
+    return Math.min(1, base + ringBoost);
+  }
+  function ring(x, y) {
+    const d = Math.hypot(x, y);
+    if (d < TUNE.RINGS[0]) return 0;
+    if (d < TUNE.RINGS[1]) return 1;
+    if (d < TUNE.RINGS[2]) return 2;
+    return 3;
+  }
+  function inCore(x, y) { return Math.abs(x) < TUNE.CORE_RADIUS && Math.abs(y) < TUNE.CORE_RADIUS; }
+
+  function biomeAt(x, y) {
+    if (inCore(x, y)) return 'core';
+    const e = elev(x, y);
+    if (e < TUNE.WATER) return 'water';
+    if (e < TUNE.COAST) return 'coastal';
+    const c = corr(x, y);
+    if (c > TUNE.ORACLE_CORR) return 'oracle';
+    if (e > TUNE.PEAKS) return 'mountains';
+    if (c > 0.64) return 'wastelands';
+    if (c > 0.50) return 'ruins_city';
+    return 'forest';
+  }
+
+  // ---------- voronoi regions (jittered grid) ----------
+  const _siteCache = new Map();
+  function regionSite(gx, gy) {
+    const k = gx + ',' + gy;
+    let s = _siteCache.get(k);
+    if (!s) {
+      const r = rng(worldSeed, 'rsite', gx, gy);
+      s = { gx, gy,
+        x: (gx + 0.2 + r() * 0.6) * TUNE.REGION_CELL,
+        y: (gy + 0.2 + r() * 0.6) * TUNE.REGION_CELL };
+      _siteCache.set(k, s);
+    }
+    return s;
+  }
+  function regionAt(x, y) {
+    const gx = Math.floor(x / TUNE.REGION_CELL), gy = Math.floor(y / TUNE.REGION_CELL);
+    let best = null, bd = Infinity;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const s = regionSite(gx + dx, gy + dy);
+      const d = (s.x - x) ** 2 + (s.y - y) ** 2;
+      if (d < bd) { bd = d; best = s; }
+    }
+    return best;
+  }
+
+  // ---------- landmarks: one per 36° sector, ring-banded ----------
+  const LANDMARK_DEFS = [
+    ['Validator Temple', 1], ['Great Oracle Core', 3], ['Treasury Vault', 2],
+    ['Compiler Archive', 1], ['Genesis Observatory', 2], ['Memory Cathedral', 2],
+    ['The Drowned Exchange', 1], ['Cascade Epicenter', 3], ['The Last Block', 3],
+    ["Alice's Origin Lab", 2],
+  ];
+  function landmarks() {
+    const out = [];
+    const bands = [
+      [TUNE.CORE_RADIUS + 120, TUNE.RINGS[0]],
+      [TUNE.RINGS[0], TUNE.RINGS[1]],
+      [TUNE.RINGS[1], TUNE.RINGS[2]],
+      [TUNE.RINGS[2], TUNE.RINGS[2] * 1.5],
+    ];
+    LANDMARK_DEFS.forEach(([name, ringIdx], i) => {
+      const r = rng(worldSeed, 'lmk', i);
+      const angle = ((i * 36) + r() * 24 - 12) * Math.PI / 180;
+      const [lo, hi] = bands[ringIdx];
+      let rad = lo + r() * (hi - lo), x = 0, y = 0;
+      // snap: walk inward until on land (deterministic — same seed, same walk)
+      for (let t = 0; t < 40; t++) {
+        x = Math.round(Math.cos(angle) * rad); y = Math.round(Math.sin(angle) * rad);
+        const b = biomeAt(x, y);
+        if (b !== 'water' && b !== 'core') break;
+        rad -= 28;
+      }
+      out.push({ name, ring: ringIdx, x, y });
+    });
+    return out;
+  }
+
+  // ---------- history graph (launch-size: 20 orgs / 40 figures / 5 disasters) ----------
+  const SYL = {
+    a: ['He', 'Ve', 'So', 'Au', 'Ka', 'Ny', 'Or', 'Za', 'Mi', 'Tha', 'Lu', 'Cyr', 'El', 'Ru', 'Da'],
+    b: ['li', 'ra', 'ro', 'thi', 'me', 'va', 'no', 'sa', 'ren', 'dor', 'mir', 'ka', 'lex', 'ven'],
+    c: ['os', 'a', 'is', 'um', 'ex', 'on', 'ia', 'ar', 'eth', 'or'],
+  };
+  const ORG_SUFFIX = ['Accord', 'Protocol', 'Syndicate', 'Collective', 'Foundation', 'Guild', 'Network', 'Assembly', 'Consortium', 'Order'];
+  const ORG_KIND = ['validator guild', 'lending protocol', 'oracle network', 'exchange', 'DAO', 'compute collective', 'archive order', 'insurance pool'];
+  const FATES = ['dissolved in the Cascade', 'absorbed by rivals', 'vanished overnight', 'fought to the last block', 'quietly wound down', 'never officially ended'];
+  const DISASTER_NAMES = ['The First Desync', 'The Veyra Incident', 'The Liquidity Winter', 'The Silent Fork', 'The Cascade'];
+  // Real-project/figure denylist guard — sandbox carries a starter list; prod list is longer.
+  const DENY = ['solana', 'bitcoin', 'ethereum', 'terra', 'luna', 'ftx', 'mango', 'serum', 'doge', 'pepe', 'bonk'];
+
+  function genName(r, pattern) {
+    let n = '';
+    for (const p of pattern) n += SYL[p][Math.floor(r() * SYL[p].length)];
+    return n;
+  }
+  function safeName(r, pattern) {
+    for (let i = 0; i < 10; i++) {
+      const n = genName(r, pattern);
+      if (!DENY.some(d => n.toLowerCase().includes(d))) return n;
+    }
+    return genName(r, pattern) + 'eth'; // mutate as last resort
+  }
+
+  function history() {
+    const r = rng(worldSeed, 'history');
+    const orgs = [], figures = [], disasters = [];
+    for (let i = 0; i < 20; i++) {
+      orgs.push({
+        id: 'org:' + i,
+        name: safeName(r, ['a', 'b']) + ' ' + ORG_SUFFIX[Math.floor(r() * ORG_SUFFIX.length)],
+        kind: ORG_KIND[Math.floor(r() * ORG_KIND.length)],
+        era: 1 + Math.floor(r() * 5),
+        fate: FATES[Math.floor(r() * FATES.length)],
+        hq: null, // assigned to a region below
+      });
+    }
+    for (let i = 0; i < 40; i++) {
+      const org = orgs[Math.floor(r() * orgs.length)];
+      figures.push({
+        id: 'fig:' + i,
+        name: safeName(r, ['a', 'b']) + ' ' + safeName(r, ['a', 'c']),
+        role: ['founder', 'lead validator', 'treasurer', 'oracle keeper', 'architect', 'auditor'][Math.floor(r() * 6)],
+        org: org.id, orgName: org.name,
+      });
+    }
+    for (let i = 0; i < 5; i++) {
+      disasters.push({
+        id: 'dis:' + i, name: DISASTER_NAMES[i], era: i + 1,
+        causeOrg: orgs[Math.floor(r() * orgs.length)].name,
+      });
+    }
+    // relationships: each figure gets 1–2 links to others (rival/mentor/etc.)
+    const RELS = ['rival of', 'mentor of', 'married to', 'betrayed', 'co-founded with'];
+    figures.forEach(f => {
+      const n = 1 + Math.floor(r() * 2);
+      f.links = [];
+      for (let k = 0; k < n; k++) {
+        const o = figures[Math.floor(r() * figures.length)];
+        if (o.id !== f.id) f.links.push({ rel: RELS[Math.floor(r() * RELS.length)], to: o.name });
+      }
+    });
+    // assign org HQs to region sites in rings 0–2 (one per sector-ish, deterministic)
+    orgs.forEach((o, i) => {
+      const rr = rng(worldSeed, 'orghq', i);
+      const angle = rr() * Math.PI * 2;
+      const rad = TUNE.CORE_RADIUS + 200 + rr() * (TUNE.RINGS[2] - TUNE.CORE_RADIUS - 200);
+      const x = Math.cos(angle) * rad, y = Math.sin(angle) * rad;
+      const site = regionAt(x, y);
+      o.hq = { x: site.x, y: site.y };
+    });
+    return { orgs, figures, disasters };
+  }
+
+  return { elev, corr, ring, inCore, biomeAt, regionAt, landmarks, history, TUNE, BIOMES };
+}
+
+// Node export for tests; browser just gets globals
+window.makeWorld = makeWorld; window.BIOMES = BIOMES; window.TUNE = TUNE;
+
+</script>
+<script>
+(() => {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const hud = document.getElementById('hud');
+  const perfEl = document.getElementById('perf');
+
+  // ----- state -----
+  let world = null, hist = null, lmks = null;
+  let camX = 0, camY = 0;            // world tile at screen center
+  let tpp = 8;                        // tiles per buffer pixel (zoom)
+  const ZOOMS = [32, 16, 8, 4, 2, 1];
+  let buf = null, bw = 0, bh = 0;
+
+  function resize() {
+    cv.width = cv.clientWidth; cv.height = cv.clientHeight;
+    bw = Math.ceil(cv.width / 2); bh = Math.ceil(cv.height / 2); // half-res buffer, 2x scale
+    buf = ctx.createImageData ? new ImageData(bw, bh) : null;
+    render();
+  }
+
+  const PRESETS = {
+    stardew: { rings: [160, 256, 512], static: 256, core: 96,
+      info: 'surface ≈ Stardew total size · infinity is underground (ruin strata) · landmarks beyond wall = depth milestones' },
+    launch: { rings: [256, 512, 896],  static: 512,  core: 160,
+      info: 'playable ≈200 chunks · edge-to-edge in ~3 min · rings 2–3 Static-locked' },
+    growth: { rings: [512, 1280, 2048], static: 1280, core: 192,
+      info: 'frontier receded once · Deep Ruinlands opening' },
+    full:   { rings: [700, 1600, 3200], static: Infinity, core: 192,
+      info: 'endgame footprint · The Silence reachable' },
+  };
+  let staticWall = Infinity;
+  function regen() {
+    const p = PRESETS[document.getElementById('preset').value];
+    TUNE.RINGS = p.rings; TUNE.CORE_RADIUS = p.core; staticWall = p.static;
+    document.getElementById('presetInfo').textContent = p.info;
+    const seed = document.getElementById('seed').value.trim() || 'genesis-001';
+    const t0 = performance.now();
+    world = makeWorld(seed);
+    hist = world.history();
+    lmks = world.landmarks();
+    renderHistoryPanel();
+    render();
+    perfEl.textContent = `world built in ${(performance.now()-t0).toFixed(0)}ms`;
+  }
+
+  // ----- render -----
+  function render() {
+    if (!world || !buf) return;
+    const t0 = performance.now();
+    const ovCorr = el('ovCorr').checked, ovElev = el('ovElev').checked, ovReg = el('ovRegions').checked;
+    const d = buf.data;
+    const halfW = bw / 2, halfH = bh / 2;
+    let i = 0;
+    for (let py = 0; py < bh; py++) {
+      for (let px = 0; px < bw; px++) {
+        const wx = camX + (px - halfW) * tpp;
+        const wy = camY + (py - halfH) * tpp;
+        let r, g, b;
+        const dC = Math.hypot(wx, wy);
+        if (dC > staticWall) {
+          // THE STATIC — corrupted unindexed space
+          const n = world.corr(wx * 3.7, wy * 3.7);
+          const v = 18 + n * 70;
+          d[i++] = v * 1.1; d[i++] = v * 0.6; d[i++] = v * 1.5; d[i++] = 255;
+          continue;
+        }
+        if (ovElev) {
+          const e = world.elev(wx, wy); r = g = b = e * 255;
+        } else {
+          const bio = world.biomeAt(wx, wy);
+          [r, g, b] = BIOMES[bio].color;
+          // subtle elevation shading for terrain readability
+          const e = world.elev(wx, wy);
+          const sh = 0.78 + e * 0.42;
+          r *= sh; g *= sh; b *= sh;
+        }
+        if (ovCorr) {
+          const c = world.corr(wx, wy);
+          r = r * (1 - c * .75) + 255 * c * .75;
+          g = g * (1 - c * .75) + 30 * c * .75;
+          b = b * (1 - c * .75) + 120 * c * .75;
+        }
+        if (ovReg) { // border: site identity differs from right/below neighbor
+          const s0 = world.regionAt(wx, wy), s1 = world.regionAt(wx + tpp, wy), s2 = world.regionAt(wx, wy + tpp);
+          if (s0.gx !== s1.gx || s0.gy !== s1.gy || s0.x !== s1.x ||
+              s0.gx !== s2.gx || s0.gy !== s2.gy || s0.x !== s2.x) { r = 255; g = 255; b = 255; }
+        }
+        d[i++] = r; d[i++] = g; d[i++] = b; d[i++] = 255;
+      }
+    }
+    // blit half-res buffer scaled 2x (cached offscreen canvas)
+    if (!render._off || render._off.width !== bw || render._off.height !== bh) {
+      render._off = document.createElement('canvas');
+      render._off.width = bw; render._off.height = bh;
+    }
+    render._off.getContext('2d').putImageData(buf, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(render._off, 0, 0, cv.width, cv.height);
+    drawVectors();
+    perfEl.textContent = `render ${(performance.now()-t0).toFixed(0)}ms · zoom ${tpp} tiles/px · center (${camX|0}, ${camY|0})`;
+  }
+
+  function w2s(x, y) { // world → screen px
+    return [ (x - camX) / tpp * 2 + cv.width / 2, (y - camY) / tpp * 2 + cv.height / 2 ];
+  }
+
+  function drawVectors() {
+    ctx.save();
+    ctx.font = '11px ui-monospace, monospace';
+    // the static wall
+    if (staticWall !== Infinity) {
+      const [cx0, cy0] = w2s(0, 0);
+      ctx.strokeStyle = 'rgba(190,90,255,.9)'; ctx.lineWidth = 2; ctx.setLineDash([3,5]);
+      ctx.beginPath(); ctx.arc(cx0, cy0, staticWall / tpp * 2, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]); ctx.lineWidth = 1;
+      ctx.fillStyle = 'rgba(190,90,255,.95)';
+      ctx.fillText('THE STATIC', cx0 + staticWall / tpp * 2 * 0.71 + 6, cy0 - staticWall / tpp * 2 * 0.71);
+    }
+    // rings
+    if (el('ovRings').checked) {
+      ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.setLineDash([6, 6]);
+      for (const rr of world.TUNE.RINGS) {
+        const [cx, cy] = w2s(0, 0);
+        ctx.beginPath(); ctx.arc(cx, cy, rr / tpp * 2, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      // core square
+      const [x0, y0] = w2s(-world.TUNE.CORE_RADIUS, -world.TUNE.CORE_RADIUS);
+      const s = world.TUNE.CORE_RADIUS * 2 / tpp * 2;
+      ctx.strokeStyle = 'rgba(255,220,120,.8)'; ctx.strokeRect(x0, y0, s, s);
+      ctx.fillStyle = 'rgba(255,220,120,.9)'; ctx.fillText('CORE (handcrafted)', x0 + 4, y0 - 6);
+    }
+    // chunk grid
+    if (el('ovChunks').checked && tpp <= 4) {
+      ctx.strokeStyle = 'rgba(255,255,255,.10)';
+      const cs = 64, x0 = Math.floor((camX - cv.width / 4 * tpp) / cs) * cs, x1 = camX + cv.width / 4 * tpp;
+      const y0 = Math.floor((camY - cv.height / 4 * tpp) / cs) * cs, y1 = camY + cv.height / 4 * tpp;
+      ctx.beginPath();
+      for (let x = x0; x <= x1; x += cs) { const [sx] = w2s(x, 0); ctx.moveTo(sx, 0); ctx.lineTo(sx, cv.height); }
+      for (let y = y0; y <= y1; y += cs) { const [, sy] = w2s(0, y); ctx.moveTo(0, sy); ctx.lineTo(cv.width, sy); }
+      ctx.stroke();
+    }
+    // history: org territories
+    if (el('ovHistory').checked) {
+      for (const o of hist.orgs) {
+        const [sx, sy] = w2s(o.hq.x, o.hq.y);
+        ctx.strokeStyle = 'rgba(120,200,255,.5)';
+        ctx.beginPath(); ctx.arc(sx, sy, 340 / tpp * 2, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(120,200,255,.95)';
+        ctx.fillText(o.name, sx + 6, sy - 6);
+        ctx.fillRect(sx - 2, sy - 2, 4, 4);
+      }
+    }
+    // landmarks
+    if (el('ovLandmarks').checked) {
+      for (const L of lmks) {
+        const locked = Math.hypot(L.x, L.y) > staticWall;
+        const [sx, sy] = w2s(L.x, L.y);
+        if (locked) { ctx.globalAlpha = 0.35; }
+        ctx.fillStyle = '#ffd166';
+        ctx.beginPath(); ctx.moveTo(sx, sy - 7); ctx.lineTo(sx + 6, sy + 4); ctx.lineTo(sx - 6, sy + 4); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.stroke();
+        ctx.fillStyle = '#ffd166'; ctx.fillText(L.name + (locked ? ' [STATIC-LOCKED]' : ''), sx + 9, sy + 4);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+  }
+
+  // ----- history panel -----
+  function renderHistoryPanel() {
+    const p = document.getElementById('histPanel');
+    const dis = hist.disasters.map(d => `<b>${d.name}</b> ← ${d.causeOrg}`).join('<br>');
+    const orgs = hist.orgs.slice(0, 8).map(o => `<b>${o.name}</b> · ${o.kind} · ${o.fate}`).join('<br>');
+    const figs = hist.figures.slice(0, 6).map(f => `<b>${f.name}</b> · ${f.role}, ${f.orgName}${f.links[0] ? ' · ' + f.links[0].rel + ' ' + f.links[0].to : ''}`).join('<br>');
+    p.innerHTML = `<div style="margin-bottom:6px">DISASTERS (5)<br>${dis}</div>
+      <div style="margin-bottom:6px">ORGS (20, first 8)<br>${orgs}</div>
+      <div>FIGURES (40, first 6)<br>${figs}</div>`;
+  }
+
+  // ----- legend -----
+  (function legend() {
+    const L = document.getElementById('legend');
+    L.innerHTML = Object.values(BIOMES).map(b =>
+      `<div><span class="sw" style="background:rgb(${b.color.join(',')})"></span>${b.name}</div>`).join('');
+  })();
+
+  // ----- input -----
+  function el(id) { return document.getElementById(id); }
+  ['ovCorr','ovElev','ovRegions','ovHistory','ovLandmarks','ovRings','ovChunks']
+    .forEach(id => el(id).addEventListener('change', render));
+  el('regen').onclick = regen;
+  el('preset').addEventListener('change', regen);
+  el('seed').addEventListener('keydown', e => { if (e.key === 'Enter') regen(); });
+  el('randomize').onclick = () => {
+    el('seed').value = 'world-' + Math.random().toString(36).slice(2, 8);
+    regen();
+  };
+
+  let dragging = false, lx = 0, ly = 0;
+  cv.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; cv.classList.add('dragging'); });
+  window.addEventListener('mouseup', () => { dragging = false; cv.classList.remove('dragging'); });
+  window.addEventListener('mousemove', e => {
+    if (dragging) {
+      camX -= (e.clientX - lx) * tpp / 2; camY -= (e.clientY - ly) * tpp / 2;
+      lx = e.clientX; ly = e.clientY;
+      render();
+    }
+  });
+  cv.addEventListener('mousemove', e => {
+    if (!world || dragging) return;
+    const r = cv.getBoundingClientRect();
+    const wx = camX + (e.clientX - r.left - cv.width / 2) * tpp / 2;
+    const wy = camY + (e.clientY - r.top - cv.height / 2) * tpp / 2;
+    const bio = world.biomeAt(wx, wy), eV = world.elev(wx, wy), cV = world.corr(wx, wy);
+    const ring = ['Outskirts', 'Frontier', 'Deep Ruinlands', 'The Silence'][world.ring(wx, wy)];
+    const cx = Math.floor(wx / 64), cyk = Math.floor(wy / 64);
+    hud.innerHTML = `tile <b>(${wx|0}, ${wy|0})</b> · chunk <b>(${cx}, ${cyk})</b><br>` +
+      `biome <b>${BIOMES[bio].name}</b> · ring <b>${ring}</b><br>` +
+      `elev <b>${eV.toFixed(2)}</b> · corruption <b>${cV.toFixed(2)}</b>`;
+  });
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const i = ZOOMS.indexOf(tpp);
+    const ni = Math.max(0, Math.min(ZOOMS.length - 1, i + (e.deltaY > 0 ? -1 : 1)));
+    if (ZOOMS[ni] !== tpp) { tpp = ZOOMS[ni]; render(); }
+  }, { passive: false });
+
+  window.addEventListener('resize', resize);
+  resize();
+  regen();
+})();
+</script>
+</body>
+</html>

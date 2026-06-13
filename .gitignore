@@ -1,1 +1,24 @@
+# dependencies
+node_modules/
+
+# env files (never commit secrets; .env.example IS committed)
+.env
+.env.local
+.env.*.local
+
+# build outputs
+dist/
+.next/
+out/
+
+# turborepo
+.turbo/
+
+# tests / coverage
+coverage/
+
+# misc
+*.log
+*.tsbuildinfo
+.DS_Store
 .DS_Store

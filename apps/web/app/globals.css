@@ -1,0 +1,21 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  background: #0f1117;
+  color: #e6e6e6;
+  line-height: 1.5;
+}
+
+a {
+  color: #5ee6a8;
+}
