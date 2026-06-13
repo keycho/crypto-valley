@@ -224,16 +224,22 @@ function stampTree(name: string, tx: number, ty: number): void {
   emitShadow(tx, ty + h, w, 10, `${name}_${tx}_${ty}`);
 }
 
-/** Small street prop: bottom row collides; top row (if tall) renders on `above`. */
-function stampProp(name: string, tx: number, ty: number): void {
+/**
+ * Small street prop: bottom row collides; the top row renders on `above` for
+ * props that read as vertical (default: height >= 3 tiles, e.g. lamps and
+ * antennas; pass `aboveTop` for shorter-but-upright props like hydrants).
+ * Low furniture (benches, planters, debris) keeps every row on ground_detail.
+ */
+function stampProp(name: string, tx: number, ty: number, aboveTop?: boolean): void {
   const { w, h } = objSize(name);
+  const topIsAbove = aboveTop ?? h >= 3;
   for (let dy = 0; dy < h; dy++) {
     for (let dx = 0; dx < w; dx++) {
       const x = tx + dx;
       const y = ty + dy;
       if (!inBounds(x, y)) continue;
       const g = objGid(name, dx, dy);
-      if (h >= 3 && dy === 0) above[at(x, y)] = g;
+      if (topIsAbove && dy === 0 && h >= 2) above[at(x, y)] = g;
       else groundDetail[at(x, y)] = g;
       if (dy === h - 1) collision[at(x, y)] = MARK;
     }
@@ -286,8 +292,8 @@ lights.push({ id: markerId++, name: "lamp_se", type: "light", x: px(38) + 8, y: 
 // Street furniture + debris around the core (deliberate near roads).
 stampProp("antenna", 44, 12);
 stampProp("electric_box", 28, 32);
-stampProp("hydrant", 22, 24);
-stampProp("hydrant", 41, 21);
+stampProp("hydrant", 22, 24, true); // upright: top row occludes like a lamp post
+stampProp("hydrant", 41, 21, true);
 const debris: Array<[string, number, number]> = [
   ["barrel", 27, 12],
   ["barrel", 35, 33],

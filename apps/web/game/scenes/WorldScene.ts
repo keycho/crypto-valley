@@ -62,6 +62,7 @@ export class WorldScene extends Phaser.Scene {
     collision.setVisible(false);
     collision.setCollisionByExclusion([-1]);
     above.setDepth(DEPTH_ABOVE);
+    this.applyEdgeOcclusion(map, ground, detail, collision);
 
     // ---- ground shadows (depth pass FIX 1) -----------------------------------
     // One soft warm-dark ellipse texture, instanced per shadow marker from the
@@ -170,6 +171,43 @@ export class WorldScene extends Phaser.Scene {
   /** Clock with sub-minute precision for smooth ambient lerping. */
   private minutesFloat(): number {
     return this.minutesOfDay + this.clockAccMs / GAME_MINUTE_MS;
+  }
+
+  /**
+   * FIX 3 (depth pass): gentle ambient occlusion — walkable tiles touching a
+   * structure footprint get a subtle warm darkening (multiplicative tint), so
+   * buildings sit IN the ground instead of on it. Pure render-side: derived
+   * from the collision layer, no map data change. Water and the map border
+   * ring are skipped (their collision is boundary, not structure).
+   */
+  private applyEdgeOcclusion(
+    map: Phaser.Tilemaps.Tilemap,
+    ground: Phaser.Tilemaps.TilemapLayer,
+    detail: Phaser.Tilemaps.TilemapLayer,
+    collision: Phaser.Tilemaps.TilemapLayer,
+  ): void {
+    const W = map.width;
+    const H = map.height;
+    const solid = (x: number, y: number): boolean =>
+      x >= 0 && y >= 0 && x < W && y < H && collision.getTileAt(x, y) !== null;
+    const inStructureBand = (x: number, y: number): boolean =>
+      x > 4 && x < W - 2 && y > 1 && y < H - 2;
+    const AO_TINT = 0xe0d4c2; // ~12% warm darkening
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (solid(x, y) || !inStructureBand(x, y)) continue;
+        let touching = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          if (solid(x + dx, y + dy) && inStructureBand(x + dx, y + dy)) touching++;
+        }
+        if (touching === 0) continue;
+        const g = ground.getTileAt(x, y);
+        if (g) g.tint = AO_TINT;
+        const d = detail.getTileAt(x, y);
+        if (d) d.tint = AO_TINT;
+      }
+    }
   }
 
   /**
