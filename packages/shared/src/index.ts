@@ -21,3 +21,5 @@ export type PongMessage = z.infer<typeof PongMessageSchema>;
 export function makePong(): PongMessage {
   return { t: "pong" };
 }
+
+export * from "./farm";

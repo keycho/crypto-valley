@@ -1,14 +1,9 @@
 /**
  * packages/sim — PURE deterministic gameplay logic.
  *
- * Rules (see CLAUDE.md): no IO, no `Date.now()`. Time is always passed in as a
- * parameter, so `same seed + inputs => same outputs`, always. The API, the game
- * server, and the client all import this package, so determinism is sacred.
- *
- * Real systems (crops, energy, crafting, movement) land in M1+.
+ * Rules (CLAUDE.md): no IO, no `Date.now()`. Time is always a parameter, so
+ * `same inputs => same outputs`, always. The API, the game server, and the
+ * client all import this package; determinism is sacred. Tests are required.
  */
-
-/** Placeholder pure helper, replaced by real sim logic later. */
-export function add(a: number, b: number): number {
-  return a + b;
-}
+export * from "./crops";
+export * from "./energy";
