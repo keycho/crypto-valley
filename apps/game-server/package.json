@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@crypto-valley/shared": "workspace:*",
+    "@msgpack/msgpack": "^3.0.0",
     "ws": "^8.18.0",
     "zod": "^3.23.0"
   },
