@@ -59,6 +59,32 @@ const rng = (): number => {
 const chance = (p: number): boolean => rng() < p;
 const pick = <T,>(arr: T[]): T => arr[Math.floor(rng() * arr.length)];
 
+// Low-frequency value noise, independent of the rng() stream (so changing the
+// wear pattern doesn't reshuffle the rest of the map): hash a coarse lattice
+// and smoothstep-interpolate. Used to CLUSTER worn pavement into patches.
+const hash2 = (ix: number, iy: number): number => {
+  let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 0x100000000;
+};
+const WEAR_CELL = 6; // ~6-tile-wide patches
+const wearNoise = (x: number, y: number): number => {
+  const smooth = (t: number): number => t * t * (3 - 2 * t);
+  const gx = x / WEAR_CELL;
+  const gy = y / WEAR_CELL;
+  const x0 = Math.floor(gx);
+  const y0 = Math.floor(gy);
+  const fx = smooth(gx - x0);
+  const fy = smooth(gy - y0);
+  const n00 = hash2(x0, y0);
+  const n10 = hash2(x0 + 1, y0);
+  const n01 = hash2(x0, y0 + 1);
+  const n11 = hash2(x0 + 1, y0 + 1);
+  return (
+    (n00 + (n10 - n00) * fx) * (1 - fy) + (n01 + (n11 - n01) * fx) * fy
+  );
+};
+
 const EMPTY = 0;
 const ground = new Array<number>(W * H).fill(EMPTY);
 const groundDetail = new Array<number>(W * H).fill(EMPTY);
@@ -107,18 +133,17 @@ for (let x = CORE.x0; x <= CORE.x1; x++) {
     if (y === ROAD_HY && x % 3 === 0) ground[at(x, y)] = gid("road_line");
   }
 }
-// plaza: broken concrete, three light variants mixed
-for (let y = PLAZA.y0; y <= PLAZA.y1; y++) {
-  for (let x = PLAZA.x0; x <= PLAZA.x1; x++) {
-    const r = rng();
-    ground[at(x, y)] = gid(r < 0.22 ? "concrete_b" : r < 0.4 ? "concrete_c" : "concrete");
-  }
-}
-// worn-concrete variation across the core (broken pavement, not uniform)
+// Worn pavement, CLUSTERED via low-frequency noise so large paved areas stay
+// calm. Only ~15% of concrete tiles get a wear decal (~85% clean); the plaza is
+// part of this pass, so it reads abandoned via the crack/weed overlays rather
+// than a busy variant grid.
+const WEAR_THRESH = 0.66; // tiles above the noise field form worn patches
 for (let y = CORE.y0; y <= CORE.y1; y++) {
   for (let x = CORE.x0; x <= CORE.x1; x++) {
-    if (ground[at(x, y)] === gid("concrete") && !onRoad(x, y) && chance(0.14)) {
-      ground[at(x, y)] = chance(0.5) ? gid("concrete_b") : gid("concrete_c");
+    if (ground[at(x, y)] !== gid("concrete") || onRoad(x, y)) continue;
+    // inside a worn patch AND sub-sampled so even patches aren't solid
+    if (wearNoise(x, y) > WEAR_THRESH && hash2(x * 7 + 1, y * 7 + 3) < 0.55) {
+      ground[at(x, y)] = hash2(x + 13, y + 29) < 0.5 ? gid("concrete_b") : gid("concrete_c");
     }
   }
 }
