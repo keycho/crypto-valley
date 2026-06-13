@@ -1,0 +1,25 @@
+{
+  "_doc": "Overgrown Terminal palette shift (art bible §2.1). Anchors sampled from the LimeZu source tiles used in the town atlas; targets nudge cool greys -> warm greys, teal water -> de-neoned, market teal/blue -> warm. SHIFT not repaint: applyPaletteShift moves each pixel by the nearest anchor delta with falloff over `radius`.",
+  "radius": 50,
+  "entries": [
+    { "from": "#e0d0d0", "to": "#dccdb6", "note": "concrete, lit face -> warm light grey (kill the pink)" },
+    { "from": "#d0d0c0", "to": "#cabfa6", "note": "concrete mid-light" },
+    { "from": "#b0b0b0", "to": "#a59a88", "note": "concrete mid" },
+    { "from": "#a09090", "to": "#8c8276", "note": "concrete -> §2.1 #8C8276" },
+    { "from": "#808080", "to": "#6d645a", "note": "concrete shadow -> warm dark grey" },
+    { "from": "#505050", "to": "#484339", "note": "asphalt -> warm dark" },
+    { "from": "#605050", "to": "#524a3e", "note": "asphalt warm dark" },
+    { "from": "#e0d0e0", "to": "#e6dcc6", "note": "faded road marking -> warm cream" },
+    { "from": "#40a0b0", "to": "#46899c", "note": "water -> de-neoned warm teal (§2.1 #3D6E8F lean)" },
+    { "from": "#409050", "to": "#5c9a55", "note": "grass -> overgrowth green §2.1 #6FA05A lean" },
+    { "from": "#407070", "to": "#5f6d54", "note": "market teal roof -> warm olive-grey" },
+    { "from": "#306060", "to": "#42624e", "note": "dark teal -> warm shadow green" },
+    { "from": "#404050", "to": "#423d36", "note": "blue-grey -> warm dark" },
+    { "from": "#709080", "to": "#7d8868", "note": "grey-green -> warm" },
+    { "from": "#a0c0d0", "to": "#b4b6a4", "note": "light blue glass -> warm grey (no electric blue)" },
+    { "from": "#90a0d0", "to": "#9ca08c", "note": "blue glass -> warm grey" },
+    { "from": "#c06070", "to": "#b46a52", "note": "pink sign -> terracotta" },
+    { "from": "#906060", "to": "#8a6a54", "note": "mauve -> warm brown" },
+    { "from": "#a05070", "to": "#9a6052", "note": "magenta accent -> warm clay" }
+  ]
+}

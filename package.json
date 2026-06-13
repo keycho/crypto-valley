@@ -20,7 +20,10 @@
   },
   "devDependencies": {
     "@crypto-valley/config": "workspace:*",
+    "@types/pngjs": "^6.0.5",
     "eslint": "^9.17.0",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.19.0",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"
   },
