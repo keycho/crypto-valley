@@ -38,9 +38,17 @@ packages/
 ## Getting started
 
 ```bash
-pnpm install                 # install the workspace
+pnpm install   # install the workspace
+pnpm play      # ONE command: Postgres + game-server + api + web, fast clock,
+               # auto dev-bootstrap. Open http://localhost:3000/play
+```
+
+`pnpm play` reuses a running Postgres if it finds one, otherwise starts the
+docker-compose Postgres 16. To run the pieces by hand instead:
+
+```bash
 cp .env.example .env         # configure DATABASE_URL / ports
-docker compose up -d         # local Postgres 16 (optional until there's a schema)
+docker compose up -d         # local Postgres 16
 pnpm dev                     # boots web (:3000), api (:3001), game-server (:8080)
 ```
 
@@ -48,6 +56,7 @@ pnpm dev                     # boots web (:3000), api (:3001), game-server (:808
 
 | Script            | What it does                                         |
 | ----------------- | ---------------------------------------------------- |
+| `pnpm play`       | Everything to play locally (Postgres + all 3 servers, fast clock, auto-bootstrap) |
 | `pnpm dev`        | Runs web, api, and game-server concurrently (turbo)  |
 | `pnpm build`      | Builds every app/package                             |
 | `pnpm typecheck`  | `tsc --noEmit` across the workspace                  |

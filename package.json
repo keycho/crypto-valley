@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "turbo run dev",
+    "play": "bash scripts/play.sh",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
