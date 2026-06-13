@@ -13,8 +13,8 @@ export const FARM = {
   warpToTown: { x: 20, y: 27 },
 } as const;
 
-/** Stepping here in town warps to the farm (north end of the vertical road). */
-export const TOWN_WARP_TO_FARM = { x: 30, y: 5 } as const;
+/** Stepping here in town warps to the farm (north end of the island's main street). */
+export const TOWN_WARP_TO_FARM = { x: 30, y: 11 } as const;
 
 export function inFarmPlot(x: number, y: number): boolean {
   return (

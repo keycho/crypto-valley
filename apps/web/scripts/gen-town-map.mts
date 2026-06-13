@@ -1,15 +1,16 @@
 /**
- * Generates apps/web/public/assets/maps/town.tmj — the "Overgrown Terminal" town:
- * a small post-collapse tech city being reclaimed by nature (art bible Law 2).
+ * Generates apps/web/public/assets/maps/town.tmj — the town as a BOUNDED FLOATING
+ * ISLAND: a fragment of a fallen city (broken streets + plaza + overgrowth) whose
+ * organic edges crumble into the void. Tiles outside the landmass are EMPTY so the
+ * dark starfield (drawn by WorldScene) shows through.
  *
- * 60x50 @16px, the six standard layers (ground / ground_detail / collision /
- * objects / above / lights). Town core is concrete/road with grass + weeds
- * breaking through; grass fields only at the edges; a derelict civic plaza with
- * a dead terminal is the hero shot; buildings line the streets.
+ * 60x50 @16px grid, six standard layers. A central paved plaza (with the dead
+ * terminal) and two streets radiate out to the crumbling rim; buildings ring the
+ * plaza; overgrowth thickens toward the edges. Collision walls the island edge so
+ * players can't walk into the void.
  *
- * Deterministic: a fixed-seed LCG drives all scatter, so re-running reproduces a
- * byte-identical file. Run via `pnpm --filter @crypto-valley/web gen:map` (needs
- * the committed tileset manifest; regenerate the atlas first if it changed).
+ * Deterministic: a fixed-seed LCG + hashed value-noise, so re-running reproduces a
+ * byte-identical file. Run via `pnpm --filter @crypto-valley/web gen:map`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -61,115 +62,98 @@ const rng = (): number => {
 const chance = (p: number): boolean => rng() < p;
 const pick = <T,>(arr: T[]): T => arr[Math.floor(rng() * arr.length)];
 
-// Low-frequency value noise, independent of the rng() stream (so changing the
-// wear pattern doesn't reshuffle the rest of the map): hash a coarse lattice
-// and smoothstep-interpolate. Used to CLUSTER worn pavement into patches.
+// Hashed value noise (independent of the rng() stream so edits don't reshuffle).
 const hash2 = (ix: number, iy: number): number => {
   let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263)) >>> 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
   return ((h ^ (h >>> 16)) >>> 0) / 0x100000000;
 };
-const WEAR_CELL = 6; // ~6-tile-wide patches
-const wearNoise = (x: number, y: number): number => {
-  const smooth = (t: number): number => t * t * (3 - 2 * t);
-  const gx = x / WEAR_CELL;
-  const gy = y / WEAR_CELL;
+const smooth = (t: number): number => t * t * (3 - 2 * t);
+function valueNoise(x: number, y: number, cell: number, salt: number): number {
+  const gx = x / cell;
+  const gy = y / cell;
   const x0 = Math.floor(gx);
   const y0 = Math.floor(gy);
   const fx = smooth(gx - x0);
   const fy = smooth(gy - y0);
-  const n00 = hash2(x0, y0);
-  const n10 = hash2(x0 + 1, y0);
-  const n01 = hash2(x0, y0 + 1);
-  const n11 = hash2(x0 + 1, y0 + 1);
-  return (
-    (n00 + (n10 - n00) * fx) * (1 - fy) + (n01 + (n11 - n01) * fx) * fy
-  );
-};
+  const n = (a: number, b: number): number => hash2(a + salt, b - salt);
+  const n00 = n(x0, y0);
+  const n10 = n(x0 + 1, y0);
+  const n01 = n(x0, y0 + 1);
+  const n11 = n(x0 + 1, y0 + 1);
+  return (n00 + (n10 - n00) * fx) * (1 - fy) + (n01 + (n11 - n01) * fx) * fy;
+}
 
 const EMPTY = 0;
 const ground = new Array<number>(W * H).fill(EMPTY);
 const groundDetail = new Array<number>(W * H).fill(EMPTY);
 const collision = new Array<number>(W * H).fill(EMPTY);
 const above = new Array<number>(W * H).fill(EMPTY);
+const land = new Array<boolean>(W * H).fill(false);
 const at = (x: number, y: number): number => y * W + x;
 const inBounds = (x: number, y: number): boolean => x >= 0 && x < W && y >= 0 && y < H;
-
 const MARK = gid("collision_marker");
 
-// ============================================================ regions
-const WATER_W = 3; // x0-2 water, x3 shore
-const GRASS_W = 8; // grass buffer ends here (x4-7 grass near the water)
-const CORE = { x0: GRASS_W, y0: 5, x1: 52, y1: 45 }; // concrete town core
-const PLAZA = { x0: 23, y0: 14, x1: 39, y1: 30 };
-const ROAD_VX = 30; // vertical street cols 30-31
-const ROAD_HY = 22; // horizontal street rows 22-23
+// ============================================================ island mask
+const CX = 30;
+const CY = 24;
+const RX = 26;
+const RY = 20.5;
+const radial = (x: number, y: number): number => Math.hypot((x - CX) / RX, (y - CY) / RY);
+function isLandRaw(x: number, y: number): boolean {
+  const r = radial(x, y);
+  const edge = 0.84 + (valueNoise(x, y, 7, 101) - 0.5) * 0.42; // wavy ~0.63..1.05
+  if (r >= edge) return false;
+  if (r > edge - 0.14 && hash2(x * 5 + 9, y * 5 + 1) < 0.3) return false; // crumble
+  return true;
+}
+for (let y = 0; y < H; y++) {
+  for (let x = 0; x < W; x++) land[at(x, y)] = isLandRaw(x, y);
+}
 
-const inCore = (x: number, y: number): boolean =>
-  x >= CORE.x0 && x <= CORE.x1 && y >= CORE.y0 && y <= CORE.y1;
+// ============================================================ regions / streets
+const PLAZA = { x0: 24, y0: 18, x1: 37, y1: 29 };
+const ROAD_VX = 30; // vertical street cols 30-31
+const ROAD_HY = 23; // horizontal street rows 23-24
 const inPlaza = (x: number, y: number): boolean =>
   x >= PLAZA.x0 && x <= PLAZA.x1 && y >= PLAZA.y0 && y <= PLAZA.y1;
 const onRoad = (x: number, y: number): boolean =>
-  (x === ROAD_VX || x === ROAD_VX + 1 || y === ROAD_HY || y === ROAD_HY + 1) &&
-  inCore(x, y);
+  land[at(x, y)] && (x === ROAD_VX || x === ROAD_VX + 1 || y === ROAD_HY || y === ROAD_HY + 1);
+/** Central paved disc — the urban core; grass/overgrowth reclaims the rim. */
+const inPavedCore = (x: number, y: number): boolean => radial(x, y) < 0.52;
 
-// ============================================================ ground
+// ground: grass on land (void stays empty), then carve the paved core
 for (let y = 0; y < H; y++) {
   for (let x = 0; x < W; x++) {
-    if (x < WATER_W) ground[at(x, y)] = gid("water");
-    else if (x === WATER_W) ground[at(x, y)] = gid("shore_west");
-    else if (inCore(x, y)) ground[at(x, y)] = gid("concrete");
-    else ground[at(x, y)] = chance(0.12) ? gid("grass_b") : gid("grass");
+    if (!land[at(x, y)]) continue;
+    if (inPavedCore(x, y) || inPlaza(x, y)) ground[at(x, y)] = gid("concrete");
+    else ground[at(x, y)] = chance(0.16) ? gid("grass_b") : gid("grass");
   }
 }
-// roads
-for (let y = CORE.y0; y <= CORE.y1; y++) {
+// streets radiate to the rim (clipped to land)
+for (let y = 0; y < H; y++) {
   for (const x of [ROAD_VX, ROAD_VX + 1]) {
-    ground[at(x, y)] = gid("road");
-    if (x === ROAD_VX && y % 3 === 0) ground[at(x, y)] = gid("road_line");
+    if (!land[at(x, y)]) continue;
+    ground[at(x, y)] = x === ROAD_VX && y % 3 === 0 ? gid("road_line") : gid("road");
   }
 }
-for (let x = CORE.x0; x <= CORE.x1; x++) {
+for (let x = 0; x < W; x++) {
   for (const y of [ROAD_HY, ROAD_HY + 1]) {
-    ground[at(x, y)] = gid("road");
-    if (y === ROAD_HY && x % 3 === 0) ground[at(x, y)] = gid("road_line");
+    if (!land[at(x, y)]) continue;
+    ground[at(x, y)] = y === ROAD_HY && x % 3 === 0 ? gid("road_line") : gid("road");
   }
 }
-// Worn pavement, CLUSTERED via low-frequency noise so large paved areas stay
-// calm. Only ~15% of concrete tiles get a wear decal (~85% clean); the plaza is
-// part of this pass, so it reads abandoned via the crack/weed overlays rather
-// than a busy variant grid.
-const WEAR_THRESH = 0.66; // tiles above the noise field form worn patches
-for (let y = CORE.y0; y <= CORE.y1; y++) {
-  for (let x = CORE.x0; x <= CORE.x1; x++) {
+// worn pavement, clustered (calm large areas; abandoned via overlays)
+for (let y = 0; y < H; y++) {
+  for (let x = 0; x < W; x++) {
     if (ground[at(x, y)] !== gid("concrete") || onRoad(x, y)) continue;
-    // inside a worn patch AND sub-sampled so even patches aren't solid
-    if (wearNoise(x, y) > WEAR_THRESH && hash2(x * 7 + 1, y * 7 + 3) < 0.55) {
+    if (valueNoise(x, y, 6, 7) > 0.66 && hash2(x * 7 + 1, y * 7 + 3) < 0.55) {
       ground[at(x, y)] = hash2(x + 13, y + 29) < 0.5 ? gid("concrete_b") : gid("concrete_c");
     }
   }
 }
 
-// grass invading the core — clumps near the edges
-for (let i = 0; i < 26; i++) {
-  const cx = CORE.x0 + Math.floor(rng() * (CORE.x1 - CORE.x0));
-  const cy = CORE.y0 + Math.floor(rng() * (CORE.y1 - CORE.y0));
-  const r = 1 + Math.floor(rng() * 2);
-  const edgeBias = Math.min(cx - CORE.x0, CORE.x1 - cx, cy - CORE.y0, CORE.y1 - cy);
-  if (edgeBias > 8 && !chance(0.25)) continue; // grass favours edges
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      const x = cx + dx;
-      const y = cy + dy;
-      if (!inCore(x, y) || onRoad(x, y) || inPlaza(x, y)) continue;
-      if (dx * dx + dy * dy <= r * r && chance(0.7)) {
-        ground[at(x, y)] = chance(0.3) ? gid("grass_b") : gid("grass");
-      }
-    }
-  }
-}
-
-// ============================================================ objects
+// ============================================================ object machinery
 interface Marker {
   id: number;
   name: string;
@@ -177,9 +161,7 @@ interface Marker {
   x: number;
   y: number;
   kind?: string;
-  /** Warp target zone for type "warp" markers. */
   to?: string;
-  /** Rect markers (e.g. shadows) carry a size; point markers leave these unset. */
   w?: number;
   h?: number;
 }
@@ -188,26 +170,23 @@ const lights: Marker[] = [];
 let markerId = 1;
 const px = (t: number): number => t * TILE;
 
-/**
- * FIX 1 (depth pass): every stamped object registers a ground shadow — a soft
- * dark ellipse rendered by WorldScene just under the actors. Center sits at the
- * object's base line, nudged down so most of the blob spills onto the ground
- * (the overlap on the sprite's bottom edge reads as a contact shadow).
- */
 function emitShadow(tx: number, ty: number, wTiles: number, hPx: number, label: string): void {
   markers.push({
     id: markerId++,
     name: `shadow_${label}`,
     type: "shadow",
-    x: px(tx) + (wTiles * TILE) / 2, // center x
-    y: px(ty) + 3, // base line + nudge
+    x: px(tx) + (wTiles * TILE) / 2,
+    y: px(ty) + 3,
     w: Math.round(wTiles * TILE * 0.96),
     h: hPx,
   });
 }
+/** Footprints sit on solid ground (a foundation), never floating over void. */
+function foundation(x: number, y: number, paved: boolean): void {
+  land[at(x, y)] = true;
+  if (ground[at(x, y)] === EMPTY) ground[at(x, y)] = gid(paved ? "concrete" : "grass");
+}
 
-/** Building: full-footprint collision; roof rows render on `above`, the rest on
- *  ground_detail; a warm window light is registered at the front. */
 function stampBuilding(name: string, tx: number, ty: number): void {
   const { w, h } = objSize(name);
   const aboveRows = Math.max(1, Math.min(h - 1, Math.round(h * 0.5)));
@@ -216,13 +195,13 @@ function stampBuilding(name: string, tx: number, ty: number): void {
       const x = tx + dx;
       const y = ty + dy;
       if (!inBounds(x, y)) throw new Error(`${name} OOB at ${x},${y}`);
+      foundation(x, y, true);
       const g = objGid(name, dx, dy);
       if (dy < aboveRows) above[at(x, y)] = g;
       else groundDetail[at(x, y)] = g;
       collision[at(x, y)] = MARK;
     }
   }
-  // warm window light at the front face, slightly inset
   lights.push({
     id: markerId++,
     name: `win_${name}_${tx}`,
@@ -234,7 +213,6 @@ function stampBuilding(name: string, tx: number, ty: number): void {
   emitShadow(tx, ty + h, w, 14, `${name}_${tx}_${ty}`);
 }
 
-/** Tree: trunk row collides; the canopy renders on `above` (player walks behind). */
 function stampTree(name: string, tx: number, ty: number): void {
   const { w, h } = objSize(name);
   for (let dy = 0; dy < h; dy++) {
@@ -242,6 +220,7 @@ function stampTree(name: string, tx: number, ty: number): void {
       const x = tx + dx;
       const y = ty + dy;
       if (!inBounds(x, y)) throw new Error(`${name} OOB at ${x},${y}`);
+      foundation(x, y, false);
       const g = objGid(name, dx, dy);
       if (dy < h - 1) above[at(x, y)] = g;
       else {
@@ -253,12 +232,6 @@ function stampTree(name: string, tx: number, ty: number): void {
   emitShadow(tx, ty + h, w, 10, `${name}_${tx}_${ty}`);
 }
 
-/**
- * Small street prop: bottom row collides; the top row renders on `above` for
- * props that read as vertical (default: height >= 3 tiles, e.g. lamps and
- * antennas; pass `aboveTop` for shorter-but-upright props like hydrants).
- * Low furniture (benches, planters, debris) keeps every row on ground_detail.
- */
 function stampProp(name: string, tx: number, ty: number, aboveTop?: boolean): void {
   const { w, h } = objSize(name);
   const topIsAbove = aboveTop ?? h >= 3;
@@ -267,6 +240,7 @@ function stampProp(name: string, tx: number, ty: number, aboveTop?: boolean): vo
       const x = tx + dx;
       const y = ty + dy;
       if (!inBounds(x, y)) continue;
+      foundation(x, y, false);
       const g = objGid(name, dx, dy);
       if (topIsAbove && dy === 0 && h >= 2) above[at(x, y)] = g;
       else groundDetail[at(x, y)] = g;
@@ -276,141 +250,146 @@ function stampProp(name: string, tx: number, ty: number, aboveTop?: boolean): vo
   emitShadow(tx, ty + h, w, 7, `${name}_${tx}_${ty}`);
 }
 
-// Buildings lining the streets (fronts face south onto the plaza / streets).
-stampBuilding("market_med", 9, 3); // x9-15
-stampBuilding("market_small", 17, 4); // x17-21
-stampBuilding("junk_shack", 24, 3); // x24-29 (just N of plaza, W of road)
-stampBuilding("container_house", 33, 4); // x33-37 (E of road)
-stampBuilding("power_house", 41, 3); // x41-47
-stampBuilding("container_house", 47, 39); // south district
-stampBuilding("junk_shack", 10, 39); // south district
+// ---- composition: buildings ring the plaza (north + south streets) ----------
+stampBuilding("market_med", 14, 9); // x14-20
+stampBuilding("junk_shack", 32, 9); // x32-37
+stampBuilding("market_small", 40, 10); // x40-44
+stampBuilding("power_house", 22, 8); // x22-28 (NW of plaza)
+stampBuilding("container_house", 16, 34); // south district
+stampBuilding("junk_shack", 27, 35); // south district
+stampBuilding("container_house", 40, 34); // south-east
 
-// Trees: plaza corners + scattered through the core.
+// ---- trees: plaza frame + overgrowth thickening toward the rim --------------
 const trees: Array<[string, number, number]> = [
-  ["tree_a", 21, 12],
-  ["tree_b", 38, 12],
-  ["tree_a", 21, 29],
-  ["tree_b", 38, 28],
-  ["tree_b", 13, 26],
-  ["tree_a", 49, 24],
+  ["tree_a", 21, 16],
+  ["tree_b", 39, 16],
+  ["tree_a", 21, 30],
+  ["tree_b", 39, 30],
+  ["tree_b", 12, 22],
+  ["tree_a", 48, 22],
   ["tree_a", 34, 42],
-  ["tree_b", 6, 16],
+  ["tree_b", 24, 42],
+  ["tree_b", 9, 28],
+  ["tree_a", 50, 30],
 ];
-for (const [k, x, y] of trees) stampTree(k, x, y);
+for (const [k, x, y] of trees) if (land[at(x, y)] && land[at(x, y + 2)]) stampTree(k, x, y);
 
-// ---- the plaza hero: dead terminal (centre), benches, lamp cluster, planters
-const TERM = { tx: 30, ty: 20 }; // 2x3
+// ---- plaza hero: dead terminal (just off the crossing so streets stay clear) -
+const TERM = { tx: 33, ty: 19 };
 const termBaseX = px(TERM.tx + 1);
 const termBaseY = px(TERM.ty + 3);
-const termScreenY = px(TERM.ty) + 12;
-// collision footprint for the terminal base (sprite is drawn by WorldScene)
 collision[at(TERM.tx, TERM.ty + 2)] = MARK;
 collision[at(TERM.tx + 1, TERM.ty + 2)] = MARK;
 markers.push({ id: markerId++, name: "terminal", type: "terminal", x: termBaseX, y: termBaseY, kind: "terminal" });
-lights.push({ id: markerId++, name: "terminal_glow", type: "light", x: termBaseX, y: termScreenY, kind: "terminal" });
+lights.push({ id: markerId++, name: "terminal_glow", type: "light", x: termBaseX, y: px(TERM.ty) + 12, kind: "terminal" });
 
-stampProp("bench", 25, 18);
-stampProp("bench", 34, 26);
-stampProp("flower_bush", 26, 26);
-stampProp("flower_bush", 36, 18);
-stampProp("street_lamp", 24, 16);
-stampProp("street_lamp", 38, 27);
-lights.push({ id: markerId++, name: "lamp_nw", type: "light", x: px(24) + 8, y: px(16) + 8, kind: "lamp" });
-lights.push({ id: markerId++, name: "lamp_se", type: "light", x: px(38) + 8, y: px(27) + 8, kind: "lamp" });
+stampProp("bench", 26, 18);
+stampProp("bench", 33, 27);
+stampProp("flower_bush", 27, 27);
+stampProp("flower_bush", 35, 18);
+stampProp("street_lamp", 25, 16);
+stampProp("street_lamp", 37, 28);
+lights.push({ id: markerId++, name: "lamp_nw", type: "light", x: px(25) + 8, y: px(16) + 8, kind: "lamp" });
+lights.push({ id: markerId++, name: "lamp_se", type: "light", x: px(37) + 8, y: px(28) + 8, kind: "lamp" });
 
-// Street furniture + debris around the core (deliberate near roads).
-stampProp("antenna", 44, 12);
-stampProp("electric_box", 28, 32);
-stampProp("hydrant", 22, 24, true); // upright: top row occludes like a lamp post
-stampProp("hydrant", 41, 21, true);
+stampProp("antenna", 44, 14);
+stampProp("electric_box", 26, 32);
+stampProp("hydrant", 23, 25, true);
+stampProp("hydrant", 40, 22, true);
 const debris: Array<[string, number, number]> = [
-  ["barrel", 27, 12],
-  ["barrel", 35, 33],
-  ["scrap", 15, 33],
-  ["scrap", 45, 26],
-  ["trash", 33, 17],
-  ["trash", 26, 33],
-  ["trash", 43, 33],
-  ["barrel", 19, 17],
+  ["barrel", 28, 14],
+  ["barrel", 36, 33],
+  ["scrap", 18, 30],
+  ["scrap", 43, 28],
+  ["trash", 33, 16],
+  ["trash", 24, 33],
+  ["trash", 42, 31],
 ];
-for (const [k, x, y] of debris) stampProp(k, x, y);
+for (const [k, x, y] of debris) if (land[at(x, y)]) stampProp(k, x, y);
 
 // ============================================================ ground detail
-// Weeds / flowers / cracks breaking through pavement (art bible Law 2).
 const WEEDS = ["weed_a", "weed_b", "shrub_a", "shrub_b"];
 const FLOWERS = ["flower_a", "flower_b", "flower_c"];
 const CRACKS = ["crack_a", "crack_b"];
 function scatterDetail(x: number, y: number): void {
-  if (groundDetail[at(x, y)] !== EMPTY || collision[at(x, y)] !== EMPTY) return;
-  const onPavement = !inPlaza(x, y) ? inCore(x, y) : true;
+  if (!land[at(x, y)] || groundDetail[at(x, y)] !== EMPTY || collision[at(x, y)] !== EMPTY) return;
   const isGrass = ground[at(x, y)] === gid("grass") || ground[at(x, y)] === gid("grass_b");
-  // denser near plaza + roads
-  const nearHot = inPlaza(x, y) || onRoad(x, y) || (Math.abs(x - 30) < 6 && Math.abs(y - 22) < 9);
-  const base = isGrass ? 0.16 : nearHot ? 0.22 : 0.14;
+  const nearHot = inPlaza(x, y) || onRoad(x, y);
+  const rimward = radial(x, y) > 0.62; // overgrowth thickens toward the rim
+  const base = isGrass ? (rimward ? 0.26 : 0.16) : nearHot ? 0.22 : 0.14;
   if (!chance(base)) return;
   const roll = rng();
   if (isGrass) {
-    groundDetail[at(x, y)] = gid(roll < 0.6 ? pick(WEEDS) : pick(FLOWERS));
-  } else if (onPavement) {
+    groundDetail[at(x, y)] = gid(roll < 0.62 ? pick(WEEDS) : pick(FLOWERS));
+  } else {
     groundDetail[at(x, y)] =
-      roll < 0.18 ? gid(pick(CRACKS)) : roll < 0.72 ? gid(pick(WEEDS)) : gid(pick(FLOWERS));
+      roll < 0.2 ? gid(pick(CRACKS)) : roll < 0.72 ? gid(pick(WEEDS)) : gid(pick(FLOWERS));
   }
 }
-for (let y = 0; y < H; y++) for (let x = WATER_W + 1; x < W; x++) scatterDetail(x, y);
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) scatterDetail(x, y);
 
-// occasional manhole / grate on roads + plaza
 for (const [x, y] of [
-  [ROAD_VX, 10],
-  [ROAD_VX + 1, 33],
+  [ROAD_VX, 12],
+  [ROAD_VX + 1, 34],
   [31, 25],
-  [27, 23],
-  [44, 23],
+  [27, 24],
 ] as Array<[number, number]>) {
-  if (collision[at(x, y)] === EMPTY) groundDetail[at(x, y)] = gid(chance(0.5) ? "manhole" : "grate");
+  if (land[at(x, y)] && collision[at(x, y)] === EMPTY && groundDetail[at(x, y)] === EMPTY) {
+    groundDetail[at(x, y)] = gid(chance(0.5) ? "manhole" : "grate");
+  }
 }
 
-// Density guarantee: no bare 4x4 area in the town core (the #1 complaint).
-for (let by = CORE.y0; by + 3 <= CORE.y1; by += 4) {
-  for (let bx = CORE.x0; bx + 3 <= CORE.x1; bx += 4) {
+// density guarantee: no bare 4x4 block of land
+for (let by = 2; by + 3 < H; by += 4) {
+  for (let bx = 2; bx + 3 < W; bx += 4) {
+    let landCells = 0;
     let occupied = 0;
     for (let dy = 0; dy < 4; dy++) {
       for (let dx = 0; dx < 4; dx++) {
+        if (!land[at(bx + dx, by + dy)]) continue;
+        landCells++;
         if (groundDetail[at(bx + dx, by + dy)] !== EMPTY || collision[at(bx + dx, by + dy)] !== EMPTY) {
           occupied++;
         }
       }
     }
-    if (occupied === 0) {
-      // place a deliberate weed/crack in a seeded cell of the block
+    if (landCells >= 8 && occupied === 0) {
       const cx = bx + 1 + Math.floor(rng() * 2);
       const cy = by + 1 + Math.floor(rng() * 2);
+      if (!land[at(cx, cy)]) continue;
       const pavement = !(ground[at(cx, cy)] === gid("grass") || ground[at(cx, cy)] === gid("grass_b"));
       groundDetail[at(cx, cy)] = gid(pavement ? pick([...CRACKS, "weed_a"]) : pick(WEEDS));
     }
   }
 }
 
-// ============================================================ collision ring
-for (let y = 0; y < H; y++) for (let x = 0; x < WATER_W; x++) collision[at(x, y)] = MARK;
-for (let x = 0; x < W; x++) {
-  collision[at(x, 0)] = MARK;
-  collision[at(x, H - 1)] = MARK;
+// ============================================================ edge wall
+// Void tiles touching land become invisible collision so players can't walk off.
+for (let y = 0; y < H; y++) {
+  for (let x = 0; x < W; x++) {
+    if (land[at(x, y)]) continue;
+    const touchesLand =
+      (x > 0 && land[at(x - 1, y)]) ||
+      (x < W - 1 && land[at(x + 1, y)]) ||
+      (y > 0 && land[at(x, y - 1)]) ||
+      (y < H - 1 && land[at(x, y + 1)]);
+    if (touchesLand) collision[at(x, y)] = MARK;
+  }
 }
-for (let y = 0; y < H; y++) collision[at(W - 1, y)] = MARK;
 
 // ============================================================ markers + lights
-markers.unshift({ id: markerId++, name: "spawn", type: "spawn", x: px(31), y: px(28) });
-markers.push({ id: markerId++, name: "door_market_med", type: "door", x: px(12), y: px(11) });
-markers.push({ id: markerId++, name: "door_market_small", type: "door", x: px(19), y: px(11) });
-// north end of the vertical road warps to the farm
-markers.push({
-  id: markerId++,
-  name: "to_farm",
-  type: "warp",
-  to: "farm",
-  x: TOWN_WARP_TO_FARM.x * TILE,
-  y: TOWN_WARP_TO_FARM.y * TILE,
-});
+markers.unshift({ id: markerId++, name: "spawn", type: "spawn", x: px(31), y: px(26) });
+// 2-tile gate spanning both columns of the north street.
+for (const wx of [TOWN_WARP_TO_FARM.x, TOWN_WARP_TO_FARM.x + 1]) {
+  markers.push({
+    id: markerId++,
+    name: `to_farm_${wx}`,
+    type: "warp",
+    to: "farm",
+    x: wx * TILE,
+    y: TOWN_WARP_TO_FARM.y * TILE,
+  });
+}
 
 // ============================================================ assemble
 let layerId = 1;
@@ -441,10 +420,7 @@ const objectLayer = (name: string, objs: Marker[]) => ({
     type: o.type,
     x: o.x,
     y: o.y,
-    // Sized markers (shadows) are rects; everything else is a point.
-    ...(o.w !== undefined && o.h !== undefined
-      ? { width: o.w, height: o.h }
-      : { point: true }),
+    ...(o.w !== undefined && o.h !== undefined ? { width: o.w, height: o.h } : { point: true }),
     visible: true,
     rotation: 0,
     properties: [
@@ -495,4 +471,5 @@ const map = {
 
 mkdirSync(OUT_DIR, { recursive: true });
 writeFileSync(join(OUT_DIR, "town.tmj"), JSON.stringify(map));
-console.log(`wrote town.tmj (${W}x${H}); ${markers.length} markers, ${lights.length} lights`);
+const landCount = land.filter(Boolean).length;
+console.log(`wrote town.tmj (${W}x${H}); island ${landCount} tiles, ${markers.length} markers, ${lights.length} lights`);

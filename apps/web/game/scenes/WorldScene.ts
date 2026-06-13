@@ -68,6 +68,16 @@ export class WorldScene extends Phaser.Scene {
     this.zone = data.zone ?? "town";
   }
 
+  /**
+   * Integer pixel-perfect zoom. The town is framed as a diorama (~44 tiles
+   * across so the whole floating island reads as a composed place); the farm
+   * stays at the cosier working zoom.
+   */
+  private zoneZoom(width: number): number {
+    if (this.zone === "town") return Math.max(2, Math.round(width / (44 * TILE_SIZE)));
+    return zoomFor(width);
+  }
+
   /** Atlas tile name -> Tiled gid (firstgid + atlas index). */
   private tileGid(name: string): number {
     const man = this.cache.json.get("tilesmanifest") as { tiles: Record<string, number> };
@@ -179,11 +189,11 @@ export class WorldScene extends Phaser.Scene {
 
     // ---- camera ---------------------------------------------------------------
     const cam = this.cameras.main;
-    cam.setZoom(zoomFor(this.scale.width));
+    cam.setZoom(this.zoneZoom(this.scale.width));
     cam.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     cam.startFollow(this.player, true);
     this.scale.on("resize", (size: Phaser.Structs.Size) => {
-      cam.setZoom(zoomFor(size.width));
+      cam.setZoom(this.zoneZoom(size.width));
     });
 
     const kb = this.input.keyboard;
@@ -270,11 +280,16 @@ export class WorldScene extends Phaser.Scene {
     useMpStore.getState().setOnline(this.remotes.size + 1);
   }
 
-  /** Snap to the server's authoritative position only when prediction diverges. */
+  /**
+   * Snap to the server only on a gross divergence (rejected teleport / desync).
+   * The threshold is generous so normal local prediction — which legitimately
+   * runs ahead of the last 10Hz snapshot — never rubber-bands; a real speed hack
+   * leaves the server pos behind and is corrected here.
+   */
   private reconcileSelf(e: SnapEntry): void {
     const dx = this.player.x - e.x;
     const dy = this.player.y - e.y;
-    if (dx * dx + dy * dy > 24 * 24) this.player.setPosition(e.x, e.y);
+    if (dx * dx + dy * dy > 64 * 64) this.player.setPosition(e.x, e.y);
   }
 
   private disconnectNet(): void {

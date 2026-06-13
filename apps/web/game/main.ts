@@ -15,7 +15,7 @@ export function createGame(parent: HTMLElement): Phaser.Game {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent,
-    backgroundColor: "#0f1117",
+    backgroundColor: "#0b0b18", // deep space; the island floats on it (P5a)
     scale: {
       mode: Phaser.Scale.RESIZE,
       width: "100%",
