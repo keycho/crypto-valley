@@ -57,6 +57,7 @@ export class WorldScene extends Phaser.Scene {
   private moving = false;
   private prevMoving = false;
   private net?: CvNet;
+  private starfield?: Phaser.GameObjects.TileSprite;
   private remotes = new Map<string, RemotePlayer>();
   private onChatSend = ({ msg }: { msg: string }): void => this.net?.sendChat(msg);
 
@@ -95,6 +96,7 @@ export class WorldScene extends Phaser.Scene {
     this.warpLocked = true;
     this.disconnectNet();
     this.remotes = new Map();
+    this.starfield = undefined;
     this.sheet = useMpStore.getState().appearance.sheet;
     this.prevMoving = false;
 
@@ -118,6 +120,7 @@ export class WorldScene extends Phaser.Scene {
     collision.setCollisionByExclusion([-1]);
     above.setDepth(DEPTH_ABOVE);
     this.applyEdgeOcclusion(map, ground, detail, collision);
+    if (this.zone === "town") this.addIslandFraming(map, ground);
 
     // ---- ground shadows (depth pass FIX 1) -----------------------------------
     // One soft warm-dark ellipse texture, instanced per shadow marker from the
@@ -310,6 +313,7 @@ export class WorldScene extends Phaser.Scene {
     this.updateFps(delta);
     this.farm?.update(delta);
     this.updateNet();
+    this.updateStarfield(delta);
     this.checkWarps();
   }
 
@@ -322,6 +326,13 @@ export class WorldScene extends Phaser.Scene {
     this.prevMoving = this.moving;
     const now = performance.now();
     for (const r of this.remotes.values()) r.interpolate(now);
+  }
+
+  /** Slow starfield drift — the dead city's fragment adrift in space. */
+  private updateStarfield(delta: number): void {
+    if (!this.starfield) return;
+    this.starfield.tilePositionX += delta * 0.003;
+    this.starfield.tilePositionY -= delta * 0.0016;
   }
 
   /** Switch zones when the player steps onto a warp tile. */
@@ -379,6 +390,68 @@ export class WorldScene extends Phaser.Scene {
         if (g) g.tint = AO_TINT;
         const d = detail.getTileAt(x, y);
         if (d) d.tint = AO_TINT;
+      }
+    }
+  }
+
+  /** A small tile of subtly-coloured stars for the deep-space backdrop. */
+  private ensureStarTexture(): void {
+    if (this.textures.exists("cv-stars")) return;
+    const S = 220;
+    const canvas = this.textures.createCanvas("cv-stars", S, S);
+    if (!canvas) return;
+    const ctx = canvas.getContext();
+    ctx.clearRect(0, 0, S, S);
+    const cols = ["245,240,220", "196,181,253", "165,243,208", "255,255,255"]; // warm + faint oracle/terminal tints
+    let seed = 1234567;
+    const rnd = (): number => ((seed = (seed * 1664525 + 1013904223) >>> 0), seed / 0x100000000);
+    for (let i = 0; i < 70; i++) {
+      const x = Math.floor(rnd() * S);
+      const y = Math.floor(rnd() * S);
+      const a = 0.22 + rnd() * 0.6;
+      const sz = rnd() < 0.85 ? 1 : 2;
+      ctx.fillStyle = `rgba(${cols[Math.floor(rnd() * cols.length)]},${a})`;
+      ctx.fillRect(x, y, sz, sz);
+    }
+    canvas.refresh();
+  }
+
+  /**
+   * Frames the town as a floating diorama: a parallax starfield behind the
+   * landmass, a soft drop-shadow, and a rocky underside hanging off the south
+   * edges so the island reads as a fragment adrift in the void (P5a).
+   */
+  private addIslandFraming(map: Phaser.Tilemaps.Tilemap, ground: Phaser.Tilemaps.TilemapLayer): void {
+    this.ensureStarTexture();
+    this.starfield = this.add
+      .tileSprite(map.widthInPixels / 2, map.heightInPixels / 2, 3000, 2400, "cv-stars")
+      .setScrollFactor(0.25)
+      .setDepth(-1000);
+
+    this.add
+      .image(map.widthInPixels / 2, map.heightInPixels / 2 + 44, "soft-shadow")
+      .setDisplaySize(map.widthInPixels * 0.92, map.heightInPixels * 0.62)
+      .setTint(0x000000)
+      .setAlpha(0.55)
+      .setDepth(-900);
+
+    const g = this.add.graphics().setDepth(-50);
+    const shades: Array<[number, number]> = [
+      [0x2a1d12, 0.92],
+      [0x241810, 0.72],
+      [0x1c130c, 0.46],
+      [0x161009, 0.22],
+    ];
+    for (let ty = 0; ty < map.height; ty++) {
+      for (let tx = 0; tx < map.width; tx++) {
+        if (ground.getTileAt(tx, ty) === null) continue; // void
+        if (ground.getTileAt(tx, ty + 1) !== null) continue; // not a south edge
+        const bx = tx * TILE_SIZE;
+        const by = (ty + 1) * TILE_SIZE;
+        shades.forEach(([color, alpha], i) => {
+          g.fillStyle(color, alpha);
+          g.fillRect(bx, by + i * 4, TILE_SIZE, 4);
+        });
       }
     }
   }

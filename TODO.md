@@ -76,14 +76,28 @@
   doesn't crash, disconnect despawns in 1s, farming still works.
   Screenshot: docs/screenshots/town-multiplayer.png
 
+## Done — P5a: Floating island world
+
+- gen-town-map reworked into a bounded floating island (ellipse + hashed
+  value-noise, ~50x40) with organic edges crumbling into void; tiles outside are
+  empty so the dark space shows through. Composed core: central plaza + terminal,
+  two streets radiating to the rim, buildings ringing the plaza, overgrowth
+  thickening to the edges. Void-adjacent tiles are invisible collision (can't walk
+  off). Deterministic.
+- Client: deep-space background + parallax starfield (subtle drift) + soft
+  drop-shadow + rocky south-edge underside so the island reads as floating;
+  town camera pulled back to an integer diorama zoom; self-reconcile threshold
+  raised so prediction never rubber-bands.
+- Multiplayer/chat/farm-warp/collision all preserved (3-tab suite green).
+  Hero shots: docs/screenshots/town-island-{noon,dusk}.png.
+
 ## Next session
 
-- [ ] **P5 — land claiming + house building**
+- [ ] **P5b — meme-creature character system**
 
-  Per-player plots in/around the shared town: claim a plot, place + persist house
-  exterior/furniture (server-authoritative via packages/db, shared land visible
-  to all). Real auth (signed tokens) replaces the dev token. Builds on the P4
-  netcode + the P3 tile/structure schema.
+  Replace the LimeZu human avatars with the game's own meme-creature characters
+  (design + sprite sheets + the existing 4-dir/animation + appearance pipeline),
+  swapping into the P4 character-creation + net rendering cleanly.
 
   WS protocol (hello/move/snap/chat subset) in `packages/shared` with Zod schemas.
   game-server: single Town room, 10 Hz tick, speed+collision validation against the
