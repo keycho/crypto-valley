@@ -1,0 +1,44 @@
+import Phaser from "phaser";
+
+/** Loads the town map + tileset + character sheets behind a loading bar. */
+export class PreloadScene extends Phaser.Scene {
+  constructor() {
+    super("preload");
+  }
+
+  preload(): void {
+    const { width, height } = this.scale;
+    const barW = Math.floor(width / 3);
+    const barH = 8;
+    const track = this.add
+      .rectangle(width / 2, height / 2, barW, barH, 0x2a2d3a)
+      .setOrigin(0.5);
+    const fill = this.add
+      .rectangle(width / 2 - barW / 2, height / 2, 1, barH, 0x5ee6a8)
+      .setOrigin(0, 0.5);
+    this.load.on("progress", (p: number) => {
+      fill.width = Math.max(1, Math.floor(barW * p));
+    });
+    this.load.on("complete", () => {
+      track.destroy();
+      fill.destroy();
+    });
+
+    this.load.tilemapTiledJSON("town", "/assets/maps/town.tmj");
+    this.load.image("town_tiles", "/assets/tilesets/town_tiles.png");
+    // LimeZu 16x32 frames; run sheet = 6 frames per direction (R, U, L, D),
+    // idle sheet = 1 frame per direction (R, U, L, D). See game/ASSETS.md.
+    this.load.spritesheet("adam_run", "/assets/characters/adam_run.png", {
+      frameWidth: 16,
+      frameHeight: 32,
+    });
+    this.load.spritesheet("adam_idle", "/assets/characters/adam_idle.png", {
+      frameWidth: 16,
+      frameHeight: 32,
+    });
+  }
+
+  create(): void {
+    this.scene.start("world");
+  }
+}

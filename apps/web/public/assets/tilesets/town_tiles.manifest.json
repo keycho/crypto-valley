@@ -1,0 +1,53 @@
+{
+  "image": "town_tiles.png",
+  "tileSize": 16,
+  "columns": 16,
+  "rows": 14,
+  "tiles": {
+    "grass": 0,
+    "grass_detail_a": 1,
+    "grass_detail_b": 2,
+    "grass_detail_c": 3,
+    "water": 4,
+    "shore_west": 5,
+    "dirt": 6,
+    "plaza": 7,
+    "dirt_detail_a": 8,
+    "dirt_detail_b": 9,
+    "grass_tuft_a": 10,
+    "grass_tuft_b": 11,
+    "collision_marker": 16
+  },
+  "objects": {
+    "tree_a": {
+      "col": 0,
+      "row": 2,
+      "w": 2,
+      "h": 3
+    },
+    "tree_b": {
+      "col": 2,
+      "row": 2,
+      "w": 2,
+      "h": 3
+    },
+    "house_a": {
+      "col": 4,
+      "row": 2,
+      "w": 10,
+      "h": 6
+    },
+    "house_b": {
+      "col": 0,
+      "row": 8,
+      "w": 10,
+      "h": 6
+    },
+    "tent": {
+      "col": 10,
+      "row": 8,
+      "w": 4,
+      "h": 4
+    }
+  }
+}

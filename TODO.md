@@ -22,12 +22,28 @@
   incl. 20-way concurrent withdrawal split and 50× deadlock loop
 - CI runs a Postgres 16 service for the db tests
 
+## Done — P2: Phaser shell + walkable town (docs/crypto-valley-build-readiness.md §4 P2)
+
+- Asset pipeline: `apps/web/scripts/build-tileset.mts` composes a purpose-built
+  atlas (+ manifest) from named LimeZu Singles; `gen-town-map.mts` deterministically
+  generates `town.tmj` (60×50, six standard layers). Picks documented in
+  `apps/web/game/ASSETS.md`; runtime assets in `apps/web/public/assets/`
+- Phaser 3.80.1 on `/play` via the existing `dynamic({ ssr:false })` boundary:
+  Boot/Preload(loading bar)/World scenes, `pixelArt`+`roundPixels`, camera zoom 3,
+  arcade physics vs invisible collision layer, canopies/roofs on `above` (depth 10)
+- Player: Adam 16×32, 6-frame 4-direction walk, WASD+arrows, 90 px/s normalized
+  diagonals, feet-only body, integer camera follow
+- HUD bridge: typed mitt bus → Zustand → Clock (1 game-min/s) + dev-only FPS
+- Verified headless (Playwright/Chromium, WebGL): exact 135px in 1.5s, house+water
+  collision stops, canopy occlusion both ways, clock ticking, zero console errors
+
 ## Next session
 
-- [ ] **P2 — Phaser shell in Next.js (docs/crypto-valley-build-readiness.md §4 P2)**
+- [ ] **P3 — multiplayer presence (docs/crypto-valley-build-readiness.md §4 P3)**
 
-  Mount Phaser 3 via `next/dynamic({ ssr: false })` on `/play`: Boot/Preload/World
-  scenes, a placeholder Tiled map with the six standard layers, 16px tiles at 3× zoom,
-  `pixelArt: true`, arcade physics, WASD+arrows movement with collision, y-sorted player
-  vs the `above` layer, and a React HUD (Zustand) clock placeholder. Acceptance: a
-  walkable town in the browser at 60fps with no sub-pixel jitter.
+  WS protocol (hello/move/snap/chat subset) in `packages/shared` with Zod schemas.
+  game-server: single Town room, 10 Hz tick, speed+collision validation against the
+  same `town.tmj`, dirty-entity snapshot broadcast. Client: dev-token connect, move
+  intents ≤15/s, remote players interpolated 100 ms back, local prediction with snap
+  reconciliation, zone-local chat box. Acceptance: two browsers see each other move
+  smoothly; chat works; a teleport-hack message is rejected by the server.
