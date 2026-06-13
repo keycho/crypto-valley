@@ -1,10 +1,16 @@
 /**
- * Art constants. CLAUDE.md locks 16px tiles / pixel-perfect; the founder's P2.5
- * review raised the zoom so ~25-30 tiles span a 1440px window (city feel). 3.5x
- * keeps tile edges on whole pixels (3.5 * 16 = 56) so it stays crisp.
+ * Art constants. CLAUDE.md locks 16px tiles / pixel-perfect rendering; the P2.5
+ * review wants ~25-30 tiles visible across the window, so zoom is computed per
+ * viewport as an INTEGER (crisp pixels) targeting TARGET_TILES_ACROSS.
  */
 export const TILE_SIZE = 16;
-export const ZOOM = 3.5;
+export const TARGET_TILES_ACROSS = 28;
+export const MIN_ZOOM = 3;
+
+/** Integer camera zoom for a given canvas width (1440px -> 3x = 30 tiles). */
+export function zoomFor(viewportWidth: number): number {
+  return Math.max(MIN_ZOOM, Math.round(viewportWidth / (TARGET_TILES_ACROSS * TILE_SIZE)));
+}
 
 /** Player walk speed in px/s. */
 export const PLAYER_SPEED = 90;

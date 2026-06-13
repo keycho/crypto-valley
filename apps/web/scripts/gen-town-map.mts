@@ -57,7 +57,7 @@ const rng = (): number => {
   return rngState / 0x100000000;
 };
 const chance = (p: number): boolean => rng() < p;
-const pick = <T>(arr: T[]): T => arr[Math.floor(rng() * arr.length)];
+const pick = <T,>(arr: T[]): T => arr[Math.floor(rng() * arr.length)];
 
 const EMPTY = 0;
 const ground = new Array<number>(W * H).fill(EMPTY);

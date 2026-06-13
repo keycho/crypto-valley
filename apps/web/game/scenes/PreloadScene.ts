@@ -36,6 +36,11 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 16,
       frameHeight: 32,
     });
+    // 2-frame civic terminal: 0 = dead screen, 1 = terminal-green (see ASSETS.md).
+    this.load.spritesheet("terminal", "/assets/sprites/terminal.png", {
+      frameWidth: 32,
+      frameHeight: 48,
+    });
   }
 
   create(): void {

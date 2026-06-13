@@ -1,9 +1,10 @@
-# Asset picks (P2)
+# Asset picks (P2 → P2.5 "Overgrown Terminal")
 
 All runtime art is served from `apps/web/public/assets/`. **Never import from
 `/assets-src`** — that is the raw purchased-pack archive (LimeZu Modern
-Exteriors / Modern Interiors). Everything below is either copied or composed
-out of it by a repeatable script.
+Exteriors / Modern Interiors). Everything below is copied or composed out of it
+by repeatable scripts, with the art-bible palette shift applied at build time
+(`tools/palette-shift/`, mapping table checked in — never baked into sources).
 
 ## Character — `public/assets/characters/`
 
@@ -11,48 +12,54 @@ Source: `assets-src/moderninteriors-win/2_Characters/Old/Single_Characters_Legac
 
 | File | Source | Layout |
 | --- | --- | --- |
-| `adam_run.png` | `Adam_run_16x16.png` | 384×32 = **24 frames of 16×32**, one row. 6 frames per direction in order **right (0–5), up (6–11), left (12–17), down (18–23)**. Used as the walk cycle at 10 fps. |
-| `adam_idle.png` | `Adam_idle_16x16.png` | 64×32 = **4 frames of 16×32**: one idle pose per direction, order **right (0), up (1), left (2), down (3)**. |
-
-Note: the task spec said "4-frame walk"; the LimeZu legacy sheets ship a
-6-frame cycle per direction, so we use all 6 (cleaner loop, same layout idea).
-The premade Character_Generator sheets were rejected: irregular multi-animation
-layout (idle/walk/sleep/sit packed into one 896×656 sheet) — the legacy
-single-row-per-animation sheets are simpler and exactly frame-aligned.
+| `adam_run.png` | `Adam_run_16x16.png` | 384×32 = 24 frames of 16×32, one row: 6 per direction, **right (0–5), up (6–11), left (12–17), down (18–23)**. Walk cycle at 10 fps. |
+| `adam_idle.png` | `Adam_idle_16x16.png` | 64×32 = 4 frames of 16×32: idle per direction, **right 0, up 1, left 2, down 3**. |
 
 ## Tileset — `public/assets/tilesets/town_tiles.png` (+ `.manifest.json`)
 
-**Composed, not copied**: `scripts/build-tileset.mts` (run via
-`pnpm --filter @crypto-valley/web gen:tileset`) picks individually-named tiles
-from the packs' `*_Singles_16x16` folders and packs them into one small atlas
-(16 columns wide), writing a manifest of named indices/rects next to it. We do
-this instead of shipping a themed sheet because the full sheets are huge (the
-complete tileset is 2816×8224 — over the 8192px GPU texture limit on some
-hardware) and we use ~2% of them.
+Composed by `scripts/build-tileset.mts` (`pnpm --filter @crypto-valley/web
+gen:tileset`) from named Singles under
+`assets-src/modernexteriors-win/Modern_Exteriors_16x16/ME_Theme_Sorter_16x16/`,
+then palette-shifted toward art bible §2.1 (cool greys → warm greys, teal →
+warm water, market teal/blue → warm olive; see `tools/palette-shift/mapping.json`).
 
-Atlas contents (sources under
-`assets-src/modernexteriors-win/Modern_Exteriors_16x16/ME_Theme_Sorter_16x16/`):
+- **Terrain singles:** `Grass_Water_1_*` (grass/water/west shore),
+  `Sidewalk_1_9` (concrete), `Asphalt_1_Variation_2/_5` (road / faded lane
+  line); overgrowth + street decor: `Props_Grass_9/10`, `Flowers_1–3`,
+  `Shrub_1/2`, `Manhole_1`, `Grate_1`.
+- **Synthesized tiles (drawn by the script, §2-palette):** `concrete_b/_c`
+  (worn pavement: stains + seam + moss speck over `Sidewalk_1_9`),
+  `crack_a/_b` (hairline crack decals, one with a weed sprig — the
+  "overgrowth overlay" pattern from bible §5), and the translucent collision
+  marker (row 1, col 0).
+- **Multi-tile objects:** trees `Tree_1/2` (2×3); buildings `Market_Small_1`
+  (5×8), `Market_Medium_1` (7×9), `Container_House_1` (5×5), `Junk_Shack_1`
+  (6×6), `Power_House_1` (7×8); street furniture `Street_Lamp_1` (2×4),
+  `Antenna` (3×4), `Bench_2`, `Electric_Box_1`, `Hydrant_1`, `Flower_Bush_1`;
+  debris `Brown_Barrel_1`, `Scrap_Metal_Pile_1`, `Small_Trash_Pile_1`;
+  `Tent_1` (4×4). Mobile-home sprites were dropped per the P2.5 review
+  (read suburban, not post-collapse-urban).
 
-- **Row 0 — 1×1 terrain tiles** from `1_Terrains_and_Fences_Singles_16x16`
-  (`Grass_Water_1_*` for grass/water/shore, `Grass_1_21` for dirt,
-  `Props_Dirt_*`/`Props_Grass_*` for ground detail) and
-  `2_City_Terrains_Singles_16x16/Sidewalk_1_9` for the plaza pavement.
-- **Row 1 col 0 — synthesized collision marker** (translucent magenta, not from
-  the packs). The `collision` layer is authored with this tile and rendered
-  invisible at runtime.
-- **Rows 2+ — multi-tile objects**, packed by the script and recorded in the
-  manifest: `Tree_1`/`Tree_2` (2×3 tiles, from `3_City_Props_Singles_16x16`),
-  `Mobile_House_Big_1`/`_2` (10×6) and `Tent_1` (4×4, both from
-  `11_Camping_Singles_16x16`).
+## Terminal — `public/assets/sprites/terminal.png`
+
+Synthesized 2-frame spritesheet (32×48 each): frame 0 = dead screen
+(`#1A1D24` + scanlines), frame 1 = live terminal-green (`#34D399` /
+`#A7F3D0` glyphs) on a warm §2.1 casing. The plaza's flickering civic
+terminal — the town's one "cold ghost" (bible Law 1). WorldScene drives the
+frame flicker and its breathing green point light.
 
 ## Map — `public/assets/maps/town.tmj`
 
-Generated by `scripts/gen-town-map.mts`
-(`pnpm --filter @crypto-valley/web gen:map`). 60×50 tiles, 16px, the six
-standard layers (`ground / ground_detail / collision / objects / above /
-lights`). Deterministic (fixed-seed LCG) — rerunning reproduces the identical
-file. Objects are stamped with their bottom rows (walls/trunks) on
-`ground_detail` + `collision` and their top rows (roofs/canopies) on `above`,
-which is what makes the player walk behind tree canopies.
+Generated by `scripts/gen-town-map.mts` (`gen:map`). 60×50, six standard
+layers. Town core is concrete with grass/weeds/cracks breaking through
+(Law 2); roads cross at a derelict civic plaza (worn-pavement mix, benches,
+dead streetlights, the terminal); buildings line the north street + south
+district; water + shore on the west edge; grass fields only at the margins.
+Density rule enforced in-generator: **no bare 4×4 area in the town core**.
+Deterministic — re-runs are byte-identical (fixed-seed LCG).
 
-Regeneration order if you change tile picks: `gen:tileset` → `gen:map`.
+Light markers (`lights` object layer) carry a `kind` property
+(`window | lamp | terminal`) consumed by the WorldScene Light2D pipeline via
+the registry in `game/dayCurve.ts` (content config, not engine constants).
+
+Regeneration order if picks change: `gen:tileset` → `gen:map`.

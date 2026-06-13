@@ -41,7 +41,7 @@ export interface LightDef {
 export const LIGHT_REGISTRY: Record<LightKind, LightDef> = {
   window: { color: 0xffb769, radius: 60, intensity: 1.25, warm: true },
   lamp: { color: 0xffd9a0, radius: 72, intensity: 1.5, warm: true },
-  terminal: { color: 0x34d399, radius: 44, intensity: 1.0, warm: false },
+  terminal: { color: 0x34d399, radius: 64, intensity: 1.3, warm: false },
 };
 
 const lerpChannel = (a: number, b: number, t: number): number => Math.round(a + (b - a) * t);

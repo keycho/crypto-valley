@@ -6,6 +6,7 @@
     "allowJs": true,
     "incremental": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "plugins": [{ "name": "next" }]
   },
   "include": [

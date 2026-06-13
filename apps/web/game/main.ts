@@ -24,6 +24,7 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     render: {
       pixelArt: true, // nearest-neighbour + antialias off
       roundPixels: true, // integer positions at render time: no sub-pixel jitter
+      maxLights: 16, // the town map registers 10 point lights
     },
     physics: {
       default: "arcade",
