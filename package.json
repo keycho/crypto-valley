@@ -13,8 +13,10 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "eslint .",
+    "validate": "pnpm --filter @crypto-valley/content validate",
     "db:generate": "pnpm --filter @crypto-valley/db db:generate",
-    "db:migrate": "pnpm --filter @crypto-valley/db db:migrate"
+    "db:migrate": "pnpm --filter @crypto-valley/db db:migrate",
+    "db:seed": "pnpm --filter @crypto-valley/db db:seed"
   },
   "devDependencies": {
     "@crypto-valley/config": "workspace:*",

@@ -13,10 +13,13 @@
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "validate": "tsx src/validate.ts"
   },
   "devDependencies": {
     "@crypto-valley/config": "workspace:*",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   }

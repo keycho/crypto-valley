@@ -1,0 +1,22 @@
+[
+  { "id": "wood", "category": "resource", "stackMax": 999, "baseValue": 2, "tradeable": true, "mintable": false, "meta": {} },
+  { "id": "stone", "category": "resource", "stackMax": 999, "baseValue": 3, "tradeable": true, "mintable": false, "meta": {} },
+  { "id": "copper_ore", "category": "resource", "stackMax": 999, "baseValue": 5, "tradeable": true, "mintable": false, "meta": {} },
+  { "id": "copper_bar", "category": "resource", "stackMax": 999, "baseValue": 15, "tradeable": true, "mintable": false, "meta": { "smeltedFrom": "copper_ore" } },
+  { "id": "data_fragment", "category": "resource", "stackMax": 999, "baseValue": 8, "tradeable": true, "mintable": false, "meta": {} },
+  { "id": "energy_cell", "category": "resource", "stackMax": 999, "baseValue": 20, "tradeable": true, "mintable": false, "meta": {} },
+  { "id": "datagrass", "category": "resource", "stackMax": 999, "baseValue": 4, "tradeable": true, "mintable": false, "meta": {} },
+  { "id": "glowcap", "category": "consumable", "stackMax": 999, "baseValue": 12, "tradeable": true, "mintable": false, "meta": { "energyRestore": 15 } },
+  { "id": "fertilizer_basic", "category": "consumable", "stackMax": 999, "baseValue": 25, "tradeable": true, "mintable": false, "meta": {} },
+  { "id": "seed_bitberry", "category": "seed", "stackMax": 999, "baseValue": 10, "tradeable": true, "mintable": false, "meta": { "crop": "crop_bitberry", "growthDays": 4 } },
+  { "id": "crop_bitberry", "category": "crop", "stackMax": 999, "baseValue": 25, "tradeable": true, "mintable": false, "meta": { "seed": "seed_bitberry" } },
+  { "id": "seed_pumpkin", "category": "seed", "stackMax": 999, "baseValue": 18, "tradeable": true, "mintable": false, "meta": { "crop": "crop_pumpkin", "growthDays": 5 } },
+  { "id": "crop_pumpkin", "category": "crop", "stackMax": 999, "baseValue": 70, "tradeable": true, "mintable": false, "meta": { "seed": "seed_pumpkin" } },
+  { "id": "seed_wintermint", "category": "seed", "stackMax": 999, "baseValue": 14, "tradeable": true, "mintable": false, "meta": { "crop": "crop_wintermint", "growthDays": 6 } },
+  { "id": "crop_wintermint", "category": "crop", "stackMax": 999, "baseValue": 40, "tradeable": true, "mintable": false, "meta": { "seed": "seed_wintermint" } },
+  { "id": "hoe_t1", "category": "tool", "stackMax": 1, "baseValue": 50, "tradeable": true, "mintable": false, "meta": { "tool": "hoe", "tier": 1 } },
+  { "id": "axe_t1", "category": "tool", "stackMax": 1, "baseValue": 50, "tradeable": true, "mintable": false, "meta": { "tool": "axe", "tier": 1 } },
+  { "id": "pickaxe_t1", "category": "tool", "stackMax": 1, "baseValue": 50, "tradeable": true, "mintable": false, "meta": { "tool": "pickaxe", "tier": 1 } },
+  { "id": "watering_can_t1", "category": "tool", "stackMax": 1, "baseValue": 50, "tradeable": true, "mintable": false, "meta": { "tool": "watering_can", "tier": 1 } },
+  { "id": "storage_chest", "category": "machine", "stackMax": 1, "baseValue": 120, "tradeable": true, "mintable": false, "meta": { "container": true, "slots": 30 } }
+]
