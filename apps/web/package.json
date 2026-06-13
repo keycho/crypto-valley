@@ -8,9 +8,13 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "gen:tileset": "tsx scripts/build-tileset.mts",
-    "gen:map": "tsx scripts/gen-town-map.mts"
+    "gen:map": "tsx scripts/gen-town-map.mts",
+    "gen:farm": "tsx scripts/gen-farm-map.mts",
+    "gen:all": "tsx scripts/build-tileset.mts && tsx scripts/gen-town-map.mts && tsx scripts/gen-farm-map.mts"
   },
   "dependencies": {
+    "@crypto-valley/content": "workspace:*",
+    "@crypto-valley/shared": "workspace:*",
     "mitt": "^3.0.1",
     "next": "^14.2.0",
     "phaser": "3.80.1",

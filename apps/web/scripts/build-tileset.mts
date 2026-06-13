@@ -240,12 +240,78 @@ function makeTerminal(screen: "off" | "on"): PNG {
 }
 
 const baseConcrete = readPng(ct("Sidewalk_1_9"));
+// Farm soil tiles (the urban pack has none) — warm earth, §2.1 palette.
+// variant: bare soil / tilled (furrowed) / tilled_wet (watered = visibly darker).
+function makeSoil(variant: "soil" | "tilled" | "tilled_wet"): PNG {
+  const p = new PNG({ width: TILE, height: TILE });
+  const base: [number, number, number] = variant === "tilled_wet" ? [74, 49, 34] : [110, 74, 52];
+  const light: [number, number, number] = variant === "tilled_wet" ? [92, 62, 44] : [138, 94, 66];
+  const dark: [number, number, number] = variant === "tilled_wet" ? [56, 36, 24] : [92, 60, 42];
+  const hash = (x: number, y: number): number => {
+    let v = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ (variant === "soil" ? 1 : 7)) >>> 0;
+    v = (v ^ (v >>> 13)) >>> 0;
+    return (v % 1000) / 1000;
+  };
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      const r = hash(x, y);
+      const c = r < 0.12 ? dark : r > 0.9 ? light : base;
+      setPx(p, x, y, [c[0], c[1], c[2], 255]);
+    }
+  }
+  if (variant !== "soil") {
+    const furrow: [number, number, number] = variant === "tilled_wet" ? [44, 29, 20] : [80, 52, 36];
+    for (let y = 2; y < TILE; y += 5) {
+      fillRect(p, 0, y, TILE, 1, [furrow[0], furrow[1], furrow[2], 255]);
+    }
+  }
+  return p;
+}
+
+// Bitberry growth stages 0..4 (16x16, transparent). Natural greens + muted
+// indigo berries — NOT a glowing tech accent (art bible: glow is sacred).
+function makeBitberryStage(stage: number): PNG {
+  const p = new PNG({ width: TILE, height: TILE });
+  p.data.fill(0);
+  const STEM: [number, number, number, number] = [62, 107, 67, 255];
+  const LEAF: [number, number, number, number] = [111, 160, 90, 255];
+  const BERRY: [number, number, number, number] = [86, 102, 150, 255];
+  const BERRY_HI: [number, number, number, number] = [150, 165, 210, 255];
+  const cx = 8;
+  const h = [2, 4, 7, 10, 11][stage] ?? 2;
+  const top = TILE - 2 - h;
+  for (let y = TILE - 2; y >= top; y--) setPx(p, cx, y, STEM);
+  if (stage >= 1) for (let y = TILE - 3; y >= top + 1; y -= 3) { setPx(p, cx - 1, y, LEAF); setPx(p, cx + 1, y, LEAF); }
+  if (stage >= 2) for (let y = top; y <= top + (stage >= 3 ? 5 : 3); y++) { setPx(p, cx - 2, y, STEM); setPx(p, cx + 2, y, LEAF); }
+  if (stage >= 3) fillRect(p, cx - 2, top - 1, 5, 3, LEAF);
+  if (stage >= 4) {
+    for (const [bx, by] of [[cx - 2, top + 1], [cx + 2, top], [cx, top - 1], [cx - 1, top + 3]] as const) {
+      setPx(p, bx, by, BERRY);
+      setPx(p, bx, by - 1, BERRY_HI);
+    }
+  }
+  return p;
+}
+
 const synthObjects: Array<{ name: string; png: PNG }> = [
   { name: "concrete_b", png: makeWornConcrete(baseConcrete, 7) },
   { name: "concrete_c", png: makeWornConcrete(baseConcrete, 23) },
   { name: "crack_a", png: makeCrack(1, false) },
   { name: "crack_b", png: makeCrack(2, true) },
+  { name: "soil", png: makeSoil("soil") },
+  { name: "tilled", png: makeSoil("tilled") },
+  { name: "tilled_wet", png: makeSoil("tilled_wet") },
 ];
+
+/** Crop stage spritesheet (5 frames, 16x16). Not in the atlas, not shifted. */
+function writeCropSheet(): void {
+  const sheet = new PNG({ width: TILE * 5, height: TILE });
+  sheet.data.fill(0);
+  for (let s = 0; s < 5; s++) blit(sheet, makeBitberryStage(s), s * TILE, 0);
+  const spriteDir = join(here, "../public/assets/sprites");
+  mkdirSync(spriteDir, { recursive: true });
+  writeFileSync(join(spriteDir, "crop_bitberry.png"), PNG.sync.write(sheet));
+}
 
 // The terminal ships as its own 2-frame spritesheet (off | on) so Phaser can
 // flicker the screen; it is NOT part of the static tile atlas.
@@ -338,7 +404,8 @@ const manifest = {
 writeFileSync(join(OUT_DIR, "town_tiles.manifest.json"), JSON.stringify(manifest, null, 2));
 
 writeTerminalSheet();
+writeCropSheet();
 
 console.log(`atlas ${COLS * TILE}x${ROWS * TILE} (${COLS}x${ROWS} tiles)`);
 console.log(`singles: ${singleSources.length}, objects: ${Object.keys(objectEntries).length}`);
-console.log(`wrote sprites/terminal.png (2 frames 32x48)`);
+console.log(`wrote sprites/terminal.png + sprites/crop_bitberry.png`);

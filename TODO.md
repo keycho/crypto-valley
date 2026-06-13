@@ -37,9 +37,35 @@
 - Verified headless (Playwright/Chromium, WebGL): exact 135px in 1.5s, house+water
   collision stops, canopy occlusion both ways, clock ticking, zero console errors
 
+## Done — P3: Farming core (single-player loop)
+
+- packages/sim: pure `cropStage()` (grows only while watered; lazy, schema-fit) +
+  `regenEnergy()` + action costs — determinism unit tests
+- packages/content: `crops.ts` (bitberry) + `farm.ts` (starter-plot layout shared
+  by map gen + API)
+- packages/shared: zod farm action/state protocol (every HTTP body validated)
+- apps/api: server-authoritative loop — `/dev/bootstrap`, `GET /farm/state`
+  (lazy stages + energy regen), `POST /farm/act` (hoe/water/plant/harvest in one
+  transaction; range + energy + zone validated; inventory via `moveItems`, XP on
+  harvest); `@fastify/cors`
+- apps/web: farm zone map + town↔farm edge warp; synthesized soil (bare/tilled/
+  watered-dark) + 5-stage bitberry sprites; Phaser `FarmController` (soil + crop
+  rendering, optimistic action, 1.5s growth poll); React hotbar (number keys +
+  click), inventory panel, energy/XP bar, toast
+- Verified in-browser: walk to farm, till/plant/water a row, crops advance
+  `000→444` on the fast clock, harvest → +6 Bitberry / +36 XP, energy spent,
+  out-of-range + not-ready rejected. Screenshots in docs/screenshots/farm-*.png
+
 ## Next session
 
-- [ ] **P3 — multiplayer presence (docs/crypto-valley-build-readiness.md §4 P3)**
+- [ ] **P4 — multiplayer presence (docs/crypto-valley-build-readiness.md §4 P3)**
+
+  WS protocol (hello/move/snap/chat subset) in `packages/shared` with Zod;
+  game-server single Town room at 10 Hz validating speed+collision against the
+  same `.tmj`; client connects with a dev token, sends move intents ≤15/s,
+  interpolates remote players 100 ms back with local prediction + snap
+  reconciliation; zone-local chat. Acceptance: two browsers see each other move;
+  a teleport-hack message is rejected.
 
   WS protocol (hello/move/snap/chat subset) in `packages/shared` with Zod schemas.
   game-server: single Town room, 10 Hz tick, speed+collision validation against the

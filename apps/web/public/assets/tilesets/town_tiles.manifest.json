@@ -25,6 +25,9 @@
     "concrete_c": 18,
     "crack_a": 19,
     "crack_b": 20,
+    "soil": 21,
+    "tilled": 22,
+    "tilled_wet": 23,
     "collision_marker": 32
   },
   "objects": {

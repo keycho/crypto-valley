@@ -10,8 +10,16 @@ import {
   zoomFor,
 } from "../constants";
 import { ambientColorAt, LIGHT_REGISTRY, type LightKind, nightnessAt } from "../dayCurve";
+import { FarmController } from "../FarmController";
+import { useFarmStore, type Zone } from "../../stores/farm";
 
 type Dir = "right" | "up" | "left" | "down";
+
+interface Warp {
+  tx: number;
+  ty: number;
+  to: Zone;
+}
 
 /** Frame ranges in the LimeZu sheets (order: right, up, left, down). */
 const RUN_START: Record<Dir, number> = { right: 0, up: 6, left: 12, down: 18 };
@@ -39,15 +47,41 @@ export class WorldScene extends Phaser.Scene {
   private terminalBlinkAt = 0;
   private lightingOn = false;
   private playerShadow!: Phaser.GameObjects.Image;
+  private zone: Zone = "town";
+  private farm?: FarmController;
+  private tileset!: Phaser.Tilemaps.Tileset;
+  private warps: Warp[] = [];
+  private warpLocked = true; // released once the player steps off the entry warp
 
   constructor() {
     super("world");
   }
 
+  init(data: { zone?: Zone }): void {
+    this.zone = data.zone ?? "town";
+  }
+
+  /** Atlas tile name -> Tiled gid (firstgid + atlas index). */
+  private tileGid(name: string): number {
+    const man = this.cache.json.get("tilesmanifest") as { tiles: Record<string, number> };
+    return this.tileset.firstgid + man.tiles[name];
+  }
+
   create(): void {
-    const map = this.make.tilemap({ key: "town" });
+    // scene.restart() reuses this instance, so per-scene refs MUST be reset or
+    // they leak destroyed objects from the previous zone (a stale terminal /
+    // lights would crash setPipeline / setIntensity on a dead .scene).
+    this.terminal = undefined;
+    this.managedLights = [];
+    this.farm = undefined;
+    this.warps = [];
+    this.warpLocked = true;
+
+    const map = this.make.tilemap({ key: this.zone });
     const tiles = map.addTilesetImage("town_tiles", "town_tiles");
     if (!tiles) throw new Error("tileset 'town_tiles' missing from map");
+    this.tileset = tiles;
+    useFarmStore.getState().patch({ zone: this.zone });
 
     // Light2D needs WebGL; in Canvas fallback we keep the unlit pipeline.
     this.lightingOn = this.game.renderer.type === Phaser.WEBGL;
@@ -99,6 +133,7 @@ export class WorldScene extends Phaser.Scene {
     this.physics.add.collider(this.player, collision);
 
     for (const dir of ["right", "up", "left", "down"] as const) {
+      if (this.anims.exists(`walk-${dir}`)) continue; // anims persist across scene.restart
       this.anims.create({
         key: `walk-${dir}`,
         frames: this.anims.generateFrameNumbers("adam_run", {
@@ -156,6 +191,32 @@ export class WorldScene extends Phaser.Scene {
     this.cursors = kb.createCursorKeys();
     this.wasd = kb.addKeys("W,A,S,D") as WorldScene["wasd"];
 
+    // ---- warps (door/edge zone switch, no networking) ------------------------
+    this.warps = (map.getObjectLayer("objects")?.objects ?? [])
+      .filter((o) => o.type === "warp")
+      .map((o) => ({
+        tx: Math.floor((o.x ?? 0) / TILE_SIZE),
+        ty: Math.floor((o.y ?? 0) / TILE_SIZE),
+        to: ((o.properties as Array<{ name: string; value: string }> | undefined)?.find(
+          (p) => p.name === "to",
+        )?.value ?? "town") as Zone,
+      }));
+
+    // ---- farm systems (soil + crops + actions) only in the farm zone ---------
+    if (this.zone === "farm") {
+      this.farm = new FarmController(
+        this,
+        map,
+        tiles,
+        (name) => this.tileGid(name),
+        () => ({
+          tx: Math.floor(this.player.x / TILE_SIZE),
+          ty: Math.floor(this.player.y / TILE_SIZE),
+          facing: this.facing,
+        }),
+      );
+    }
+
     gameBus.emit("clock", { minutesOfDay: this.minutesOfDay });
   }
 
@@ -166,6 +227,23 @@ export class WorldScene extends Phaser.Scene {
     this.updateLighting();
     this.updateTerminal(delta);
     this.updateFps(delta);
+    this.farm?.update(delta);
+    this.checkWarps();
+  }
+
+  /** Switch zones when the player steps onto a warp tile. */
+  private checkWarps(): void {
+    const tx = Math.floor(this.player.x / TILE_SIZE);
+    const ty = Math.floor(this.player.y / TILE_SIZE);
+    const on = this.warps.find((w) => w.tx === tx && w.ty === ty);
+    if (!on) {
+      this.warpLocked = false; // stepped off any warp -> future entries fire
+      return;
+    }
+    if (this.warpLocked) return;
+    this.warpLocked = true;
+    this.farm = undefined;
+    this.scene.restart({ zone: on.to });
   }
 
   /** Clock with sub-minute precision for smooth ambient lerping. */

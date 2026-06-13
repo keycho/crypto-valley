@@ -109,6 +109,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@crypto-valley/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@crypto-valley/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       mitt:
         specifier: ^3.0.1
         version: 3.0.1

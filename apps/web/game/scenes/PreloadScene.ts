@@ -25,7 +25,14 @@ export class PreloadScene extends Phaser.Scene {
     });
 
     this.load.tilemapTiledJSON("town", "/assets/maps/town.tmj");
+    this.load.tilemapTiledJSON("farm", "/assets/maps/farm.tmj");
     this.load.image("town_tiles", "/assets/tilesets/town_tiles.png");
+    this.load.json("tilesmanifest", "/assets/tilesets/town_tiles.manifest.json");
+    // bitberry growth stages 0..4 (16x16)
+    this.load.spritesheet("crop_bitberry", "/assets/sprites/crop_bitberry.png", {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
     // LimeZu 16x32 frames; run sheet = 6 frames per direction (R, U, L, D),
     // idle sheet = 1 frame per direction (R, U, L, D). See game/ASSETS.md.
     this.load.spritesheet("adam_run", "/assets/characters/adam_run.png", {

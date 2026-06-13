@@ -15,6 +15,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { TOWN_WARP_TO_FARM } from "@crypto-valley/content";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const TILESET_DIR = join(here, "../public/assets/tilesets");
 const OUT_DIR = join(here, "../public/assets/maps");
@@ -175,6 +177,8 @@ interface Marker {
   x: number;
   y: number;
   kind?: string;
+  /** Warp target zone for type "warp" markers. */
+  to?: string;
   /** Rect markers (e.g. shadows) carry a size; point markers leave these unset. */
   w?: number;
   h?: number;
@@ -398,6 +402,15 @@ for (let y = 0; y < H; y++) collision[at(W - 1, y)] = MARK;
 markers.unshift({ id: markerId++, name: "spawn", type: "spawn", x: px(31), y: px(28) });
 markers.push({ id: markerId++, name: "door_market_med", type: "door", x: px(12), y: px(11) });
 markers.push({ id: markerId++, name: "door_market_small", type: "door", x: px(19), y: px(11) });
+// north end of the vertical road warps to the farm
+markers.push({
+  id: markerId++,
+  name: "to_farm",
+  type: "warp",
+  to: "farm",
+  x: TOWN_WARP_TO_FARM.x * TILE,
+  y: TOWN_WARP_TO_FARM.y * TILE,
+});
 
 // ============================================================ assemble
 let layerId = 1;
@@ -434,7 +447,10 @@ const objectLayer = (name: string, objs: Marker[]) => ({
       : { point: true }),
     visible: true,
     rotation: 0,
-    properties: o.kind ? [{ name: "kind", type: "string", value: o.kind }] : [],
+    properties: [
+      ...(o.kind ? [{ name: "kind", type: "string", value: o.kind }] : []),
+      ...(o.to ? [{ name: "to", type: "string", value: o.to }] : []),
+    ],
   })),
 });
 
