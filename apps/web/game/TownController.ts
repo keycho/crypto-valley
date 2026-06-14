@@ -10,6 +10,7 @@ import { useFarmStore } from "../stores/farm";
 import { useMarketStore } from "../stores/market";
 import { useMpStore } from "../stores/mp";
 import { useQuestUi } from "../stores/questUi";
+import { useSeasonUi } from "../stores/seasonUi";
 import { useWorldStore } from "../stores/world";
 
 const ERRORS: Record<string, string> = {
@@ -68,6 +69,7 @@ export class TownController {
   private useKey: Phaser.Input.Keyboard.Key;
   private escKey: Phaser.Input.Keyboard.Key;
   private questKey: Phaser.Input.Keyboard.Key;
+  private boardKey: Phaser.Input.Keyboard.Key;
   private pollAcc = 0;
   private busy = false;
 
@@ -126,6 +128,7 @@ export class TownController {
     this.useKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.escKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.questKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this.boardKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.L);
 
     gameBus.on("plotClaim", this.onClaim);
     gameBus.on("structureUpgrade", this.onUpgrade);
@@ -163,6 +166,7 @@ export class TownController {
     useBuildStore.getState().setBuildMode(false);
     useMarketStore.getState().setFocusBuy(null);
     useMarketStore.getState().setBoardOpen(false);
+    useSeasonUi.getState().set(false);
   }
 
   update(deltaMs: number): void {
@@ -174,10 +178,14 @@ export class TownController {
       else if (m.focusBuy !== null) m.setFocusBuy(null);
       else if (b.selectedStructureId) b.selectStructure(null);
       else if (m.boardOpen) m.setBoardOpen(false);
+      else if (useSeasonUi.getState().open) useSeasonUi.getState().set(false);
       else useQuestUi.getState().set(false);
     }
     if (Phaser.Input.Keyboard.JustDown(this.questKey) && !useMpStore.getState().typing) {
       useQuestUi.getState().toggle();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.boardKey) && !useMpStore.getState().typing) {
+      useSeasonUi.getState().toggle();
     }
     this.updateProximity();
     this.drawUiOverlay();

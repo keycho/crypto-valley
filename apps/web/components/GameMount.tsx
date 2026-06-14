@@ -11,6 +11,7 @@ import { useFarmStore } from "../stores/farm";
 import { useMarketStore } from "../stores/market";
 import { useMpStore } from "../stores/mp";
 import { useQuestUi } from "../stores/questUi";
+import { useSeasonUi } from "../stores/seasonUi";
 import { useWorldStore } from "../stores/world";
 
 /**
@@ -32,6 +33,7 @@ export default function GameMount() {
     w.__cvBuildStore = useBuildStore;
     w.__cvQuestUi = useQuestUi;
     w.__cvMarketStore = useMarketStore;
+    w.__cvSeasonUi = useSeasonUi;
     w.__cvEnter = async (name: string, sheet: string): Promise<void> => {
       const id = await createCharacter(name, { sheet });
       useFarmStore.getState().patch({ characterId: id });

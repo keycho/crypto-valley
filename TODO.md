@@ -223,10 +223,39 @@
   is rejected; can't buy own / without Shards; unlist works; persists. Screenshots:
   docs/screenshots/p9-*.png. typecheck/test (78)/lint green.
 
+## Done — P10: Leaderboard + seasons (the competition layer)
+
+- Time-boxed **seasons** (1-week default, env-tunable) with a **dual leaderboard**:
+  PROFIT (flip P&L — sell price credited, buy price debited, so a flip nets the
+  spread) and PORTFOLIO VALUE (owned land base + structure value). **Assets are
+  permanent** — a season reset only zeroes the scoreboard.
+- **Fee-funded prize pool, never emissions**: each P9 market fee accrues into the
+  active season's `pool_shards`. At season end the pool is split (70% profit /
+  30% portfolio, 50/30/20 across the top 3) and paid treasury→winners (ledgered).
+- Schema (migration `0005`): `seasons` (one active via partial-unique), `season_scores`
+  (running profit), `season_results` (permanent winner record → trophy source).
+- DB engine: `currentSeason` (lazy create + roll over when due — fast read path, no
+  lock unless a rollover is actually due; **idempotent** end under a row lock),
+  `addSeasonProfit`/`addSeasonPool`, `buildSeasonState`. `buyPlot` now also moves
+  season profit + feeds the pool, in the sale's transaction. 11 new tests
+  (profit math, prize split, portfolio ranking, payout + trophies +
+  assets-survive + no-double-pay, mid-season joiner).
+- Client: a **Leaderboard panel** (season # + live countdown + pool, Profit/Portfolio
+  tabs with your row highlighted, your standing + trophies), a **season-end modal**
+  (your placement + prize + trophy on rollover), and a 🏆 Season button showing your
+  trophy count. Toggle with the button or `L`.
+- Verified (curl + browser, short season): a flip tops the profit board; the pool
+  reflects fees; season end pays the top finishers (Shards only go UP), records
+  results + trophies, resets the board, starts a fresh season — land/buildings/
+  Shards untouched; repeat access doesn't double-pay; trophies persist. Screenshots:
+  docs/screenshots/p10-*.png. typecheck/test (89)/lint green.
+
 ## Next session
 
-- [ ] **P10 — leaderboard + seasons**
+- [ ] **P11 — world expansion (seamless larger map) OR token layer (post-legal)**
 
-  A leaderboard (net worth = Shards + land value + structures) and time-boxed
-  seasons with prize pools funded by the market-fee `treasury` (the cut P9 accrues).
-  Land income / tax on resource-nodes + an item marketplace are still pending.
+  Either expand the world (more islands / a seamless larger claimable map, more
+  plots as the collective Age Meter rises) or — pending legal review — wire the
+  on-chain token layer behind the Shards (deposit/withdraw airlock per the
+  token-addendum). Land income / tax on resource-nodes + an item marketplace also
+  still pending.

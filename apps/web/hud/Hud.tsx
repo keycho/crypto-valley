@@ -8,14 +8,17 @@ import { Hotbar } from "./Hotbar";
 import { HudBridge } from "./HudBridge";
 import { Inventory } from "./Inventory";
 import { LandMarket } from "./LandMarket";
+import { Leaderboard } from "./Leaderboard";
 import { Online } from "./Online";
 import { PlotPanel } from "./PlotPanel";
 import { QuestLog } from "./QuestLog";
 import { QuestTracker } from "./QuestTracker";
+import { SeasonEndModal } from "./SeasonEndModal";
 import { Toast } from "./Toast";
 import { useHotbarKeys } from "./useHotbarKeys";
 import { useMarketStore } from "../stores/market";
 import { useQuestUi } from "../stores/questUi";
+import { useSeasonUi } from "../stores/seasonUi";
 import { useWorldStore } from "../stores/world";
 
 const hudBtn: React.CSSProperties = {
@@ -30,6 +33,17 @@ const hudBtn: React.CSSProperties = {
   fontSize: 12,
   cursor: "pointer",
 };
+
+/** Opens the leaderboard; shows a 🏆 count when the player has trophies. */
+function SeasonButton() {
+  const toggle = useSeasonUi((s) => s.toggle);
+  const trophies = useWorldStore((s) => s.world?.season?.trophies.length ?? 0);
+  return (
+    <button onClick={toggle} style={hudBtn}>
+      🏆 Season{trophies > 0 ? ` (${trophies})` : ""}
+    </button>
+  );
+}
 
 /** Opens the Land Market board; dot when any plot is currently listed. */
 function MarketButton() {
@@ -120,6 +134,7 @@ export function Hud() {
           <EnergyBar />
         </div>
         <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <SeasonButton />
           <MarketButton />
           <QuestButton />
           <Fps />
@@ -143,11 +158,13 @@ export function Hud() {
             textAlign: "right",
           }}
         >
-          WASD move · Space use/claim/chop · 🔨 Build · 🏞 Market · Q quests · Enter chat
+          WASD move · Space use/claim/chop · 🔨 Build · 🏞 Market · 🏆 Season · Q quests
         </div>
         <PlotPanel />
         <QuestLog />
         <LandMarket />
+        <Leaderboard />
+        <SeasonEndModal />
         <Inventory />
       </div>
     </>
