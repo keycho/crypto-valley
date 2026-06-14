@@ -85,3 +85,22 @@ export function structureRefund(def: StructureDef): StructureCost {
     shards: Math.floor(def.cost.shards * REFUND_FRACTION),
   };
 }
+
+/**
+ * Shards "value" of a structure for portfolio scoring (P10) — the cumulative
+ * Shards invested to reach this def (the whole chain for a building, or the
+ * one-off cost for a standalone). A skyscraper is worth far more than a hut.
+ */
+export function structureValue(defId: string): number {
+  const def = STRUCTURE_BY_ID[defId];
+  if (!def) return 0;
+  if (def.family === "standalone") return def.cost.shards;
+  let value = 0;
+  let cur: StructureDef | undefined = STRUCTURE_BY_ID.hut;
+  while (cur) {
+    value += cur.cost.shards;
+    if (cur.id === defId) break;
+    cur = cur.nextTier ? STRUCTURE_BY_ID[cur.nextTier] : undefined;
+  }
+  return value;
+}

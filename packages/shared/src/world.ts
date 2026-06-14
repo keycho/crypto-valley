@@ -90,11 +90,46 @@ export const QuestViewSchema = z.object({
 });
 export type QuestView = z.infer<typeof QuestViewSchema>;
 
+// ---- seasons / leaderboard (P10) -------------------------------------------
+export const SeasonBoardEntrySchema = z.object({
+  characterId: z.string(),
+  name: z.string(),
+  score: z.number().int(),
+  rank: z.number().int(),
+});
+export type SeasonBoardEntry = z.infer<typeof SeasonBoardEntrySchema>;
+
+export const SeasonTrophySchema = z.object({
+  seasonNumber: z.number().int(),
+  board: z.string(),
+  rank: z.number().int(),
+  prize: z.number().int(),
+});
+export type SeasonTrophy = z.infer<typeof SeasonTrophySchema>;
+
+export const SeasonViewSchema = z.object({
+  number: z.number().int(),
+  /** ms-epoch the season ends (client renders the countdown). */
+  endsAt: z.number().int(),
+  pool: z.number().int(),
+  profitBoard: z.array(SeasonBoardEntrySchema),
+  portfolioBoard: z.array(SeasonBoardEntrySchema),
+  me: z.object({
+    profit: z.number().int(),
+    portfolioValue: z.number().int(),
+    profitRank: z.number().int().nullable(),
+    portfolioRank: z.number().int().nullable(),
+  }),
+  trophies: z.array(SeasonTrophySchema),
+});
+export type SeasonView = z.infer<typeof SeasonViewSchema>;
+
 export const WorldStateSchema = z.object({
   plots: z.array(PlotViewSchema),
   structures: z.array(StructureViewSchema),
   nodes: z.array(NodeViewSchema),
   quests: z.array(QuestViewSchema),
+  season: SeasonViewSchema,
   me: MeViewSchema,
 });
 export type WorldState = z.infer<typeof WorldStateSchema>;

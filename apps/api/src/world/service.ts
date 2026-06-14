@@ -1,9 +1,13 @@
 import {
+  addSeasonPool,
+  addSeasonProfit,
   advanceQuests,
+  buildSeasonState,
   buyPlot,
   characters,
   claimPlot,
   claimQuest,
+  currentSeason,
   ensureQuests,
   inventorySlots,
   listings,
@@ -26,6 +30,7 @@ import {
   GATHER_NODES,
   GATHER_RESPAWN_GAME_MS,
   gameDay,
+  LEADERBOARD_TOP_N,
   MARKET_CURRENCY,
   MARKET_FEE_BPS,
   MAX_PLOTS,
@@ -36,6 +41,7 @@ import {
   PLOTS,
   plotAt,
   QUEST_BY_ID,
+  SEASON_LENGTH_MS,
   STRUCTURE_BY_ID,
   structureRefund,
 } from "@crypto-valley/content";
@@ -49,6 +55,10 @@ import { db } from "../db";
 const CLOCK_FACTOR = process.env.FAST_CLOCK === "1" ? 8 : 1;
 /** Real ms a gathered node stays depleted: one in-game day, clock-scaled. */
 const NODE_RESPAWN_MS = GATHER_RESPAWN_GAME_MS / CLOCK_FACTOR;
+/** Season length — `SEASON_SECONDS` env overrides the default (for tests). */
+const SEASON_MS = process.env.SEASON_SECONDS
+  ? Number(process.env.SEASON_SECONDS) * 1000
+  : SEASON_LENGTH_MS;
 
 /** Player-facing rule violation; routes map it to WorldActionResult.error. */
 export class WorldError extends Error {}
@@ -123,8 +133,12 @@ export async function getWorldState(characterId: string, now: number): Promise<W
   const [char] = await database.select().from(characters).where(eq(characters.id, characterId));
   if (!char) throw new WorldError("CHARACTER_NOT_FOUND");
 
-  // Assign the onboarding quest + reset stale dailies before reading them.
-  await database.transaction((tx) => ensureQuests(tx, characterId, dayNow(now)));
+  // Assign the onboarding quest + reset stale dailies, and roll the season over if
+  // due + read the leaderboards — all in one transaction.
+  const seasonState = await database.transaction(async (tx) => {
+    await ensureQuests(tx, characterId, dayNow(now));
+    return buildSeasonState(tx, characterId, now, SEASON_MS, LEADERBOARD_TOP_N);
+  });
   const questRows = await database
     .select({
       questId: questProgress.questId,
@@ -198,6 +212,15 @@ export async function getWorldState(characterId: string, now: number): Promise<W
       available: nodeAvailable(harvestedAt.get(n.id) ?? null, now, NODE_RESPAWN_MS),
     })),
     quests: buildQuestViews(questRows, char.shards),
+    season: {
+      number: seasonState.number,
+      endsAt: seasonState.endsAt,
+      pool: seasonState.pool,
+      profitBoard: seasonState.profitBoard.map((e) => ({ ...e, name: displayName(e.name) })),
+      portfolioBoard: seasonState.portfolioBoard.map((e) => ({ ...e, name: displayName(e.name) })),
+      me: seasonState.me,
+      trophies: seasonState.trophies,
+    },
     me: {
       shards: char.shards,
       energy: regenEnergy(char.energy, char.energyUpdated.getTime(), now),
@@ -273,6 +296,12 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
 
       case "buyPlot": {
         const res = await buyPlot(tx, characterId, input.plotIndex, MAX_PLOTS, MARKET_FEE_BPS, new Date(now));
+        // Season bookkeeping in the SAME transaction: a flip = seller +price,
+        // buyer −price (so buy-low/sell-high nets positive); the fee feeds the pool.
+        const { season } = await currentSeason(tx, now, SEASON_MS);
+        await addSeasonProfit(tx, season.id, res.sellerId, res.price, now);
+        await addSeasonProfit(tx, season.id, characterId, -res.price, now);
+        await addSeasonPool(tx, season.id, res.fee);
         return `Bought plot · −${res.price} Shards`;
       }
 

@@ -300,3 +300,68 @@ export const ledger = pgTable(
   },
   (t) => [index("ledger_by_character").on(t.characterId, t.at)],
 );
+
+// ============ SEASONS / LEADERBOARD (P10) ============
+
+/**
+ * Time-boxed competitive seasons. Exactly one is `active` (partial-unique index).
+ * `pool_shards` accrues each land-sale fee DURING the season; at `ends_at` the
+ * season is ENDED — the pool is paid to the top finishers (treasury→winners,
+ * ledgered), results are recorded, the scoreboard resets, and a fresh season
+ * starts. A reset NEVER touches assets (land/buildings/Shards/items).
+ */
+export const seasons = pgTable(
+  "seasons",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: integer("number").notNull().unique(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull().default("active"), // active | ended
+    poolShards: bigint("pool_shards", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [uniqueIndex("seasons_one_active").on(t.status).where(sql`${t.status} = 'active'`)],
+);
+
+/**
+ * Running competitive PROFIT for a (season, character): credited the sale price
+ * when you sell land, debited the price when you buy — so a flip nets positive.
+ * Updated in the SAME transaction as the sale (row-locked, race-safe).
+ */
+export const seasonScores = pgTable(
+  "season_scores",
+  {
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    characterId: uuid("character_id")
+      .notNull()
+      .references(() => characters.id),
+    profit: bigint("profit", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.seasonId, t.characterId] })],
+);
+
+/**
+ * The permanent record of season winners — the source of a character's trophy
+ * flags (survives the scoreboard reset forever).
+ */
+export const seasonResults = pgTable(
+  "season_results",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    seasonNumber: integer("season_number").notNull(),
+    characterId: uuid("character_id")
+      .notNull()
+      .references(() => characters.id),
+    board: text("board").notNull(), // profit | portfolio
+    rank: integer("rank").notNull(),
+    prizeShards: bigint("prize_shards", { mode: "number" }).notNull().default(0),
+    awardedAt: timestamp("awarded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("season_results_by_character").on(t.characterId)],
+);
