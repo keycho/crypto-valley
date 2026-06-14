@@ -2,7 +2,7 @@
   "image": "town_tiles.png",
   "tileSize": 16,
   "columns": 16,
-  "rows": 34,
+  "rows": 30,
   "tiles": {
     "grass": 0,
     "grass_b": 1,
@@ -88,48 +88,48 @@
     "bench": {
       "col": 12,
       "row": 18,
-      "w": 3,
+      "w": 2,
       "h": 2
     },
     "electric_box": {
-      "col": 0,
-      "row": 26,
+      "col": 14,
+      "row": 18,
       "w": 2,
       "h": 4
     },
     "hydrant": {
-      "col": 2,
+      "col": 0,
       "row": 26,
       "w": 1,
       "h": 2
     },
     "flower_bush": {
-      "col": 3,
+      "col": 1,
       "row": 26,
       "w": 2,
-      "h": 1
+      "h": 2
     },
     "barrel": {
-      "col": 5,
+      "col": 3,
       "row": 26,
       "w": 1,
       "h": 2
     },
     "scrap": {
-      "col": 6,
+      "col": 4,
       "row": 26,
       "w": 5,
       "h": 3
     },
     "trash": {
-      "col": 11,
+      "col": 9,
       "row": 26,
       "w": 2,
       "h": 2
     },
     "tent": {
-      "col": 0,
-      "row": 30,
+      "col": 11,
+      "row": 26,
       "w": 4,
       "h": 4
     }

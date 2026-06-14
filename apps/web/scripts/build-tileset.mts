@@ -81,6 +81,61 @@ function ssTile(tx: number, ty: number): PNG {
   PNG.bitblt(SS_SHEET, p, tx * TILE, ty * TILE, TILE, TILE, 0, 0);
   return p;
 }
+/** Crop an arbitrary pixel rect from the Sunnyside sheet. */
+function ssPx(x: number, y: number, w: number, h: number): PNG {
+  const p = new PNG({ width: w, height: h });
+  PNG.bitblt(SS_SHEET, p, x, y, w, h, 0, 0);
+  return p;
+}
+/** One frame from a horizontal strip sheet (frames laid left-to-right). */
+function stripFrame(sheet: PNG, fw: number, fh: number, idx: number): PNG {
+  const p = new PNG({ width: fw, height: fh });
+  PNG.bitblt(sheet, p, idx * fw, 0, fw, fh, 0, 0);
+  return p;
+}
+/** Trim fully-transparent borders so a sprite can be re-anchored precisely. */
+function tightCrop(src: PNG): PNG {
+  let minx = src.width, miny = src.height, maxx = -1, maxy = -1;
+  for (let y = 0; y < src.height; y++) {
+    for (let x = 0; x < src.width; x++) {
+      if (src.data[(y * src.width + x) * 4 + 3] > 16) {
+        if (x < minx) minx = x;
+        if (x > maxx) maxx = x;
+        if (y < miny) miny = y;
+        if (y > maxy) maxy = y;
+      }
+    }
+  }
+  if (maxx < 0) return new PNG({ width: TILE, height: TILE });
+  const w = maxx - minx + 1, h = maxy - miny + 1;
+  const p = new PNG({ width: w, height: h });
+  PNG.bitblt(src, p, minx, miny, w, h, 0, 0);
+  return p;
+}
+/** Place src into a W×H transparent canvas, horizontally centred + bottom-anchored. */
+function padBottomCenter(src: PNG, W: number, H: number, bottomMargin = 0): PNG {
+  const p = new PNG({ width: W, height: H });
+  p.data.fill(0);
+  const dx = Math.max(0, Math.round((W - src.width) / 2));
+  const dy = Math.max(0, H - src.height - bottomMargin);
+  PNG.bitblt(src, p, 0, 0, Math.min(src.width, W), Math.min(src.height, H), dx, dy);
+  return p;
+}
+
+// Sunnyside decorative sprites, cropped from the pack and re-anchored to our grid.
+const SUN_PLANTS = join(SUN, "Elements/Plants");
+const ssTree01 = readPng(join(SUN_PLANTS, "spr_deco_tree_01_strip4.png")); // round, 4×(32×34)
+const ssTree02 = readPng(join(SUN_PLANTS, "spr_deco_tree_02_strip4.png")); // pine,  4×(28×43)
+const treeRoundPng = padBottomCenter(tightCrop(stripFrame(ssTree01, 32, 34, 0)), 32, 48);
+const treePinePng = padBottomCenter(tightCrop(stripFrame(ssTree02, 28, 43, 0)), 32, 48);
+const bushPng = padBottomCenter(tightCrop(ssPx(433, 18, 15, 21)), 32, 32);
+const barrelPng = padBottomCenter(tightCrop(ssPx(690, 158, 12, 22)), 16, 32);
+const benchPng = padBottomCenter(tightCrop(ssPx(751, 192, 26, 30)), 32, 32);
+const rockPng = tightCrop(ssPx(787, 340, 26, 44)); // grey boulder (gather node)
+// Pre-assembled colored-roof cottages for the low building tiers (hut/cabin/house).
+const houseHutPng = tightCrop(ssPx(520, 424, 32, 56)); // orange roof (small)
+const houseCabinPng = tightCrop(ssPx(520, 680, 32, 56)); // purple roof
+const houseHousePng = tightCrop(ssPx(512, 160, 48, 80)); // blue roof (large)
 
 // ---- 1x1 terrain + decor singles -------------------------------------------
 const SINGLE_TILES: Array<{ name: string; file?: string; png?: PNG }> = [
@@ -105,9 +160,11 @@ const SINGLE_TILES: Array<{ name: string; file?: string; png?: PNG }> = [
 ];
 
 // ---- multi-tile objects -----------------------------------------------------
-const OBJECTS: Array<{ name: string; file: string }> = [
-  { name: "tree_a", file: cp("Tree_1") },
-  { name: "tree_b", file: cp("Tree_2") },
+// Trees + cozy decor come from Sunnyside (inline png); the remaining urban props
+// still source from the ME pack until they're migrated or dropped.
+const OBJECTS: Array<{ name: string; file?: string; png?: PNG }> = [
+  { name: "tree_a", png: treeRoundPng },
+  { name: "tree_b", png: treePinePng },
   { name: "market_small", file: sh("Market_Small_1") },
   { name: "market_med", file: sh("Market_Medium_1") },
   { name: "container_house", file: cp("Container_House_1") },
@@ -115,10 +172,10 @@ const OBJECTS: Array<{ name: string; file: string }> = [
   { name: "power_house", file: cp("Power_House_1") },
   { name: "street_lamp", file: cp("Street_Lamp_1") },
   { name: "antenna", file: cp("Antenna.png") },
-  { name: "bench", file: cp("Bench_2") },
+  { name: "bench", png: benchPng },
   { name: "electric_box", file: cp("Electric_Box_1") },
-  { name: "hydrant", file: cp("Hydrant_1") },
-  { name: "flower_bush", file: cp("Flower_Bush_1") },
+  { name: "hydrant", png: barrelPng },
+  { name: "flower_bush", png: bushPng },
   { name: "barrel", file: cp("Brown_Barrel_1") },
   { name: "scrap", file: cp("Scrap_Metal_Pile_1") },
   { name: "trash", file: cp("Small_Trash_Pile_1") },
@@ -135,7 +192,7 @@ interface ObjectEntry {
 // A few extras have ".png" already baked into the helper name; normalise.
 const fixName = (f: string) => f.replace(".png.png", ".png");
 
-const objectPngs = OBJECTS.map((o) => ({ ...o, png: readPng(fixName(o.file)) }));
+const objectPngs = OBJECTS.map((o) => ({ ...o, png: o.png ?? readPng(fixName(o.file!)) }));
 for (const o of objectPngs) {
   if (o.png.width % TILE !== 0 || o.png.height % TILE !== 0) {
     throw new Error(`${o.name}: ${o.png.width}x${o.png.height} not a multiple of ${TILE}`);
@@ -394,6 +451,9 @@ const ST = {
   woodWall: [156, 107, 74, 255] as const, // #9C6B4A (art-bible "wood/structures")
   woodWallSh: [120, 82, 56, 255] as const,
   beaconHi: [255, 224, 160, 255] as const, // warm amber highlight
+  // Warm tan for the tall synth tiers so they harmonise with the Sunnyside cottages.
+  towerWall: [196, 154, 108, 255] as const,
+  towerWallSh: [150, 112, 74, 255] as const,
 } as const;
 
 interface ChainParams {
@@ -411,9 +471,9 @@ const CHAIN: ChainParams[] = [
   { w: 22, stories: 1, storyH: 18, roof: "peak", wall: ST.woodWall, wallSh: ST.woodWallSh, crown: "none" },
   { w: 26, stories: 1, storyH: 24, roof: "peak", wall: ST.woodWall, wallSh: ST.woodWallSh, crown: "chimney" },
   { w: 30, stories: 2, storyH: 18, roof: "peak", wall: HP.wall, wallSh: HP.wallSh, crown: "chimney" },
-  { w: 26, stories: 4, storyH: 16, roof: "flat", wall: HP.stone, wallSh: HP.stoneSh, crown: "none" },
-  { w: 30, stories: 6, storyH: 14, roof: "flat", wall: HP.stone, wallSh: HP.stoneSh, crown: "green" },
-  { w: 32, stories: 8, storyH: 12, roof: "flat", wall: HP.stone, wallSh: HP.stoneSh, crown: "beacon" },
+  { w: 26, stories: 4, storyH: 16, roof: "flat", wall: ST.towerWall, wallSh: ST.towerWallSh, crown: "none" },
+  { w: 30, stories: 6, storyH: 14, roof: "flat", wall: ST.towerWall, wallSh: ST.towerWallSh, crown: "green" },
+  { w: 32, stories: 8, storyH: 12, roof: "flat", wall: ST.towerWall, wallSh: ST.towerWallSh, crown: "beacon" },
 ];
 
 function drawChain(p: PNG, cx: number, baseY: number, t: ChainParams): void {
@@ -529,12 +589,18 @@ function writeStructuresSheet(): void {
   const CH = 112;
   const standalones = [drawWallSeg, drawGate, drawLamp];
   const FRAMES = 6 + standalones.length;
+  // Low tiers (hut/cabin/house) are Sunnyside cottages; tall tiers (tower/high-rise/
+  // skyscraper) stay synthesized (the pack has no skyline), warm-toned to match.
+  const HOUSES = [houseHutPng, houseCabinPng, houseHousePng];
   const sheet = new PNG({ width: CW * FRAMES, height: CH });
   sheet.data.fill(0);
   for (let i = 0; i < FRAMES; i++) {
     const f = new PNG({ width: CW, height: CH });
     f.data.fill(0);
-    if (i < 6) drawChain(f, CW / 2, CH - 2, CHAIN[i]);
+    if (i < 3) {
+      const h = HOUSES[i];
+      PNG.bitblt(h, f, 0, 0, h.width, h.height, Math.round((CW - h.width) / 2), CH - 2 - h.height);
+    } else if (i < 6) drawChain(f, CW / 2, CH - 2, CHAIN[i]);
     else standalones[i - 6](f, CW / 2, CH - 2);
     blit(sheet, f, i * CW, 0);
   }
@@ -554,48 +620,14 @@ function writeStakeSprite(): void {
 }
 
 // gathering: tree | stump | rock | rubble, 32x48 each, anchored bottom-centre.
-function drawTree(p: PNG, x0: number): void {
-  const cx = x0 + 16;
-  fillRect(p, cx - 2, 30, 4, 16, c(HP.trunk));
-  setPx(p, cx - 2, 30, c(HP.trunkSh));
-  fillRect(p, cx - 2, 44, 4, 2, c(HP.trunkSh));
-  // bushy canopy (overlapping blobs)
-  const blobs: Array<[number, number, number]> = [
-    [cx, 16, 11],
-    [cx - 7, 22, 8],
-    [cx + 7, 22, 8],
-    [cx, 26, 9],
-  ];
-  for (const [bx, by, r] of blobs) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (dx * dx + dy * dy > r * r) continue;
-        const shade = dy < -r / 3 ? HP.leafHi : dx > r / 3 ? HP.leafSh : HP.leaf;
-        setPx(p, bx + dx, by + dy, c(shade));
-      }
-    }
-  }
-}
+// The tree + rock are Sunnyside crops (see writeGatherSheet); the depleted
+// stump + rubble stay synthesized.
 function drawStump(p: PNG, x0: number): void {
   const cx = x0 + 16;
   fillRect(p, cx - 4, 38, 8, 8, c(HP.trunk));
   outlineRect(p, cx - 4, 38, 8, 8, HP.trunkSh);
   fillRect(p, cx - 4, 38, 8, 2, c(HP.leafSh)); // mossy cut top
   setPx(p, cx, 39, c(HP.trunkSh));
-}
-function drawRock(p: PNG, x0: number): void {
-  const cx = x0 + 16;
-  const boulder = (bx: number, by: number, w: number, h: number): void => {
-    fillRect(p, bx, by, w, h, c(HP.stone));
-    fillRect(p, bx, by, w, 2, c(HP.stoneHi));
-    fillRect(p, bx, by + h - 2, w, 2, c(HP.stoneSh));
-    outlineRect(p, bx, by, w, h, HP.edge);
-  };
-  boulder(cx - 9, 30, 18, 16);
-  boulder(cx - 2, 24, 12, 12);
-  setPx(p, cx + 3, 28, c(HP.ore));
-  setPx(p, cx + 4, 28, c(HP.ore));
-  setPx(p, cx - 5, 36, c(HP.ore));
 }
 function drawRubble(p: PNG, x0: number): void {
   const cx = x0 + 16;
@@ -614,9 +646,9 @@ function writeGatherSheet(): void {
   const CH = 48;
   const sheet = new PNG({ width: CW * 4, height: CH });
   sheet.data.fill(0);
-  drawTree(sheet, 0);
+  blit(sheet, padBottomCenter(tightCrop(stripFrame(ssTree01, 32, 34, 0)), CW, CH), 0, 0);
   drawStump(sheet, CW);
-  drawRock(sheet, CW * 2);
+  blit(sheet, padBottomCenter(rockPng, CW, CH), CW * 2, 0);
   drawRubble(sheet, CW * 3);
   const spriteDir = join(here, "../public/assets/sprites");
   mkdirSync(spriteDir, { recursive: true });
