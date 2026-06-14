@@ -250,7 +250,42 @@
   Shards untouched; repeat access doesn't double-pay; trophies persist. Screenshots:
   docs/screenshots/p10-*.png. typecheck/test (89)/lint green.
 
+## Done — P-ART1: Warm Ages visual pass (world palette + lighting + composition)
+
+- A focused VISUAL pass on the EXISTING assets — no new art packs, no gameplay
+  changes — pulling the world onto the art-bible "Warm Ages" spine
+  (docs/art-bible.md §3/§4): cozy, earthy, disciplined, light doing the work.
+- **Palette** (`tools/palette-shift/mapping.json`): the cold pale sidewalk ground
+  — the #1 "generic" read — now shifts to warm sunlit SAND; asphalt → warm
+  packed-earth paths; grass → earthy olive foliage; teal water de-neoned to a
+  warm blue; stray cool prop accents pulled warm. Anchors re-sampled from the
+  real LimeZu source tiles; atlas + terminal sprite regenerated (deterministic).
+- **Lighting** (`game/dayCurve.ts`): warmer golden daylight (noon `#FBF1DA` + a
+  richer golden hour), richer dusk into warm violet, and cozy amber lamp pools
+  (`#FFB769`, 3–5 tiles) that actually glow by the dusk hero window — warm-light
+  glow now driven off the ambient BLUE channel (dusk ~0.73 vs the old ~0.18), so
+  no global wash muddies the tiles.
+- **Composition** (`scripts/gen-town-map.mts`): ~half the scatter density, the
+  density-guarantee fill removed (bare warm ground is intentional negative
+  space), and the leftover dead-civ debris (scrap/trash/antenna/electric box) +
+  modern manhole/grate clutter dropped — the plaza reads composed (LAW 2). The
+  floating-island framing (starfield + drop shadow) is preserved.
+- Verified: typecheck (8/8) · lint clean · tests all green · map+atlas
+  byte-deterministic · multiplayer/plots/building/quests/market/seasons intact.
+  Hero shots refreshed: `docs/screenshots/town-island-{noon,dusk}.png` +
+  `p-art1-plaza-{noon,dusk}.png`.
+
 ## Next session
+
+- [ ] **More Warm Ages art passes (this pass did the WORLD only):**
+  - **Characters** — retint the LimeZu avatars to the §3 warm spine + the
+    selective dark-warm outline (`#2E2018`); idle/walk frames stay on-palette.
+  - **UI / HUD** — warm dark casing (`#2B2218`) + `#F5ECD6` text, the active
+    age's signature colour as the highlight (art-bible §8); restyle the panels
+    (PlotPanel / QuestLog / Market / Leaderboard) without touching logic.
+  - **Per-age palette tables** — the §2 identity: one base-palette asset set →
+    six age remaps in `tools/palette-shift/` + the age-transition VFX (§6) and
+    the land-canvas zoom-out mosaic renderer (§7).
 
 - [ ] **P11 — world expansion (seamless larger map) OR token layer (post-legal)**
 

@@ -282,20 +282,10 @@ stampProp("street_lamp", 37, 28);
 lights.push({ id: markerId++, name: "lamp_nw", type: "light", x: px(25) + 8, y: px(16) + 8, kind: "lamp" });
 lights.push({ id: markerId++, name: "lamp_se", type: "light", x: px(37) + 8, y: px(28) + 8, kind: "lamp" });
 
-stampProp("antenna", 44, 14);
-stampProp("electric_box", 26, 32);
-stampProp("hydrant", 23, 25, true);
+// One warm accent prop by the plaza. The dead-civ debris (scrap/trash piles,
+// antenna, electric box) is dropped — Warm Ages is cozy, not an abandoned city
+// (art-bible LAW 1), and the calmer plaza reads as composed (LAW 2).
 stampProp("hydrant", 40, 22, true);
-const debris: Array<[string, number, number]> = [
-  ["barrel", 28, 14],
-  ["barrel", 36, 33],
-  ["scrap", 18, 30],
-  ["scrap", 43, 28],
-  ["trash", 33, 16],
-  ["trash", 24, 33],
-  ["trash", 42, 31],
-];
-for (const [k, x, y] of debris) if (land[at(x, y)]) stampProp(k, x, y);
 
 // ============================================================ ground detail
 const WEEDS = ["weed_a", "weed_b", "shrub_a", "shrub_b"];
@@ -306,8 +296,10 @@ function scatterDetail(x: number, y: number): void {
     return;
   const isGrass = ground[at(x, y)] === gid("grass") || ground[at(x, y)] === gid("grass_b");
   const nearHot = inPlaza(x, y) || onRoad(x, y);
-  const rimward = radial(x, y) > 0.62; // overgrowth thickens toward the rim
-  const base = isGrass ? (rimward ? 0.26 : 0.16) : nearHot ? 0.22 : 0.14;
+  const rimward = radial(x, y) > 0.62; // foliage thickens gently toward the rim
+  // Restraint (art-bible LAW 2): roughly half the old density so the warm ground
+  // breathes — intentional foliage, not a busy carpet of weeds/cracks.
+  const base = isGrass ? (rimward ? 0.16 : 0.09) : nearHot ? 0.1 : 0.06;
   if (!chance(base)) return;
   const roll = rng();
   if (isGrass) {
@@ -319,40 +311,9 @@ function scatterDetail(x: number, y: number): void {
 }
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) scatterDetail(x, y);
 
-for (const [x, y] of [
-  [ROAD_VX, 12],
-  [ROAD_VX + 1, 34],
-  [31, 25],
-  [27, 24],
-] as Array<[number, number]>) {
-  if (land[at(x, y)] && !onPlot(x, y) && collision[at(x, y)] === EMPTY && groundDetail[at(x, y)] === EMPTY) {
-    groundDetail[at(x, y)] = gid(chance(0.5) ? "manhole" : "grate");
-  }
-}
-
-// density guarantee: no bare 4x4 block of land
-for (let by = 2; by + 3 < H; by += 4) {
-  for (let bx = 2; bx + 3 < W; bx += 4) {
-    let landCells = 0;
-    let occupied = 0;
-    for (let dy = 0; dy < 4; dy++) {
-      for (let dx = 0; dx < 4; dx++) {
-        if (!land[at(bx + dx, by + dy)] || onPlot(bx + dx, by + dy)) continue;
-        landCells++;
-        if (groundDetail[at(bx + dx, by + dy)] !== EMPTY || collision[at(bx + dx, by + dy)] !== EMPTY) {
-          occupied++;
-        }
-      }
-    }
-    if (landCells >= 8 && occupied === 0) {
-      const cx = bx + 1 + Math.floor(rng() * 2);
-      const cy = by + 1 + Math.floor(rng() * 2);
-      if (!land[at(cx, cy)]) continue;
-      const pavement = !(ground[at(cx, cy)] === gid("grass") || ground[at(cx, cy)] === gid("grass_b"));
-      groundDetail[at(cx, cy)] = gid(pavement ? pick([...CRACKS, "weed_a"]) : pick(WEEDS));
-    }
-  }
-}
+// No manhole/grate ground clutter (modern-industrial, off-theme) and no
+// density-guarantee fill: bare patches of warm ground are intentional negative
+// space (art-bible LAW 2 — restraint over a wall-to-wall carpet of detail).
 
 // ============================================================ plot parcels
 // Pave each claimable plot as a clean, decoration-free pad (the client draws the
