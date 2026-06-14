@@ -6,8 +6,12 @@ export type ErrorCode =
   | "ITEM_NOT_FOUND"
   | "PLOT_NOT_FOUND"
   | "PLOT_TAKEN"
-  | "ALREADY_OWN_PLOT"
   | "NOT_PLOT_OWNER"
+  // land market (P9)
+  | "PLOT_CAP_REACHED"
+  | "NOT_LISTED"
+  | "CANT_BUY_OWN"
+  | "BAD_PRICE"
   // structures (P7 free-form building)
   | "NO_PLOT"
   | "OUT_OF_BOUNDS"

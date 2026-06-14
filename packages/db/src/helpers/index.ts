@@ -1,6 +1,7 @@
 export { moveShards } from "./moveShards";
 export { moveItems, type MoveItemOp } from "./moveItems";
-export { claimPlot, ownedPlotIndex, type PlotRow } from "./plots";
+export { claimPlot, ownedPlotCount, ownedPlotIndexes, type PlotRow } from "./plots";
+export { listPlot, unlistPlot, buyPlot, type BuyResult } from "./market";
 export {
   placeStructure,
   upgradeStructure,

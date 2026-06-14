@@ -183,15 +183,16 @@ export const machineJobs = pgTable(
 /**
  * The shared island's claimable building plots (P6). Rows mirror the fixed
  * `PLOTS` grid in packages/content (seeded idempotently). Ownership is mutated
- * ONLY server-side, in a transaction, via the `claimPlot` helper (which ledgers
- * the Shards spend). `owner_id` null = unclaimed. A plot is a CANVAS — what's
- * built on it lives in `structures` (P7), not a per-plot tier.
+ * ONLY server-side, in a transaction, via the `claimPlot`/`buyPlot` helpers
+ * (which ledger the Shards spend). `owner_id` null = unclaimed. A plot is a
+ * CANVAS — what's built on it lives in `structures` (P7), not a per-plot tier.
+ * Players may own MULTIPLE plots (portfolio flipping, P9), capped in code.
  */
 export const plots = pgTable(
   "plots",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    /** Stable content index — the key clients claim against. */
+    /** Stable content index — the key clients claim/buy against. */
     plotIndex: integer("plot_index").notNull().unique(),
     ownerId: uuid("owner_id").references(() => characters.id), // null = unclaimed
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
@@ -201,13 +202,52 @@ export const plots = pgTable(
     w: integer("w").notNull(),
     h: integer("h").notNull(),
   },
+  (t) => [index("plots_by_owner").on(t.ownerId)],
+);
+
+// ============ LAND MARKET (P9) ============
+
+/**
+ * Player-to-player land listings (the flip market). At most ONE active listing
+ * per plot (partial-unique index). A sale is server-authoritative + dupe-proof:
+ * `buyPlot` locks the active listing row by the `status='active'` predicate so two
+ * concurrent buyers can't both win. Currency is `shards` for now but carried on
+ * the row so the native token can slot in later.
+ */
+export const listings = pgTable(
+  "listings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    plotId: uuid("plot_id")
+      .notNull()
+      .references(() => plots.id),
+    sellerId: uuid("seller_id")
+      .notNull()
+      .references(() => characters.id),
+    price: bigint("price", { mode: "number" }).notNull(),
+    currency: text("currency").notNull().default("shards"),
+    status: text("status").notNull().default("active"), // active | sold | cancelled
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    soldTo: uuid("sold_to").references(() => characters.id),
+    soldAt: timestamp("sold_at", { withTimezone: true }),
+  },
   (t) => [
-    // A player owns at most ONE plot at MVP — enforced in the DB, not just code.
-    uniqueIndex("plots_one_per_owner")
-      .on(t.ownerId)
-      .where(sql`${t.ownerId} is not null`),
+    uniqueIndex("listings_one_active_per_plot")
+      .on(t.plotId)
+      .where(sql`${t.status} = 'active'`),
+    index("listings_by_status").on(t.status),
+    check("listings_price_pos", sql`${t.price} > 0`),
   ],
 );
+
+/**
+ * The house treasury — accrues the market fee cut from each land sale (funds
+ * season prize pools later). One row per currency.
+ */
+export const treasury = pgTable("treasury", {
+  currency: text("currency").primaryKey(),
+  balance: bigint("balance", { mode: "number" }).notNull().default(0),
+});
 
 /**
  * Shared-world gathering nodes (choppable trees / mineable rocks). A row exists

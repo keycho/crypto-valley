@@ -19,6 +19,10 @@ export const PlotViewSchema = z.object({
   y: z.number().int(),
   w: z.number().int(),
   h: z.number().int(),
+  /** Active land-market listing price (null = not for sale). */
+  price: z.number().int().nullable(),
+  /** Listing currency ("shards" for now). */
+  currency: z.string().nullable(),
 });
 export type PlotView = z.infer<typeof PlotViewSchema>;
 
@@ -57,8 +61,10 @@ export const MeViewSchema = z.object({
   energyMax: z.number().int(),
   wood: z.number().int(),
   stone: z.number().int(),
-  /** Index of the plot this player owns, or null. */
-  ownedPlot: z.number().int().nullable(),
+  /** Plot indices this player owns (P9 — may own several). */
+  ownedPlots: z.array(z.number().int()),
+  /** Portfolio cap. */
+  maxPlots: z.number().int(),
 });
 export type MeView = z.infer<typeof MeViewSchema>;
 
@@ -147,6 +153,26 @@ export const ClaimQuestActionSchema = z.object({
   characterId: uuid,
   questId: z.string().max(40),
 });
+/** List one of your plots on the land market at `price`. */
+export const ListPlotActionSchema = z.object({
+  action: z.literal("listPlot"),
+  characterId: uuid,
+  plotIndex: z.number().int(),
+  price: z.number().int().positive(),
+  currency: z.string().max(16).default("shards"),
+});
+/** Cancel your active listing on a plot. */
+export const UnlistPlotActionSchema = z.object({
+  action: z.literal("unlistPlot"),
+  characterId: uuid,
+  plotIndex: z.number().int(),
+});
+/** Buy a listed plot (Shards buyer→seller, ownership transfers). */
+export const BuyPlotActionSchema = z.object({
+  action: z.literal("buyPlot"),
+  characterId: uuid,
+  plotIndex: z.number().int(),
+});
 
 export const WorldActionSchema = z.discriminatedUnion("action", [
   ClaimActionSchema,
@@ -156,6 +182,9 @@ export const WorldActionSchema = z.discriminatedUnion("action", [
   UpgradeActionSchema,
   RemoveActionSchema,
   ClaimQuestActionSchema,
+  ListPlotActionSchema,
+  UnlistPlotActionSchema,
+  BuyPlotActionSchema,
 ]);
 export type WorldAction = z.infer<typeof WorldActionSchema>;
 

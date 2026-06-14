@@ -1,10 +1,13 @@
 import {
   advanceQuests,
+  buyPlot,
   characters,
   claimPlot,
   claimQuest,
   ensureQuests,
   inventorySlots,
+  listings,
+  listPlot,
   moveItems,
   placeStructure,
   plots,
@@ -12,6 +15,7 @@ import {
   removeStructure,
   structures,
   type Tx,
+  unlistPlot,
   upgradeStructure,
   worldNodes,
 } from "@crypto-valley/db";
@@ -22,6 +26,9 @@ import {
   GATHER_NODES,
   GATHER_RESPAWN_GAME_MS,
   gameDay,
+  MARKET_CURRENCY,
+  MARKET_FEE_BPS,
+  MAX_PLOTS,
   nextStructure,
   nodeAvailable,
   PLOT_H,
@@ -34,7 +41,7 @@ import {
 } from "@crypto-valley/content";
 import type { QuestView, WorldAction, WorldState } from "@crypto-valley/shared";
 import { ENERGY_MAX, regenEnergy } from "@crypto-valley/sim";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 
 import { db } from "../db";
 
@@ -136,9 +143,12 @@ export async function getWorldState(characterId: string, now: number): Promise<W
       y: plots.y,
       w: plots.w,
       h: plots.h,
+      price: listings.price,
+      currency: listings.currency,
     })
     .from(plots)
-    .leftJoin(characters, eq(plots.ownerId, characters.id));
+    .leftJoin(characters, eq(plots.ownerId, characters.id))
+    .leftJoin(listings, and(eq(listings.plotId, plots.id), eq(listings.status, "active")));
 
   // Only PLOT structures (farm machines have null plot_id and are excluded).
   const structureRows = await database
@@ -159,7 +169,10 @@ export async function getWorldState(characterId: string, now: number): Promise<W
   const nodeRows = await database.select().from(worldNodes);
   const harvestedAt = new Map(nodeRows.map((r) => [r.nodeId, r.harvestedAt.getTime()]));
   const items = await sumItems(characterId);
-  const owned = plotRows.find((p) => p.ownerId === characterId);
+  const ownedPlots = plotRows
+    .filter((p) => p.ownerId === characterId)
+    .map((p) => p.index)
+    .sort((a, b) => a - b);
 
   return {
     plots: plotRows
@@ -173,6 +186,8 @@ export async function getWorldState(characterId: string, now: number): Promise<W
         y: p.y,
         w: p.w,
         h: p.h,
+        price: p.price ?? null,
+        currency: p.currency ?? null,
       })),
     structures: structureRows,
     nodes: GATHER_NODES.map((n) => ({
@@ -189,7 +204,8 @@ export async function getWorldState(characterId: string, now: number): Promise<W
       energyMax: ENERGY_MAX,
       wood: items.get("wood") ?? 0,
       stone: items.get("stone") ?? 0,
-      ownedPlot: owned ? owned.index : null,
+      ownedPlots,
+      maxPlots: MAX_PLOTS,
     },
   };
 }
@@ -215,7 +231,7 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
         if (plotAt(input.posX, input.posY)?.index !== input.plotIndex) {
           throw new WorldError("OUT_OF_RANGE");
         }
-        await claimPlot(tx, characterId, input.plotIndex, CLAIM_COST_SHARDS, new Date(now));
+        await claimPlot(tx, characterId, input.plotIndex, CLAIM_COST_SHARDS, MAX_PLOTS, new Date(now));
         const done = await advanceQuests(tx, characterId, { type: "claim_plot" }, day);
         return `Claimed plot · −${CLAIM_COST_SHARDS} Shards${questSuffix(done)}`;
       }
@@ -227,7 +243,11 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
       case "place": {
         const def = STRUCTURE_BY_ID[input.defId];
         if (!def || !def.placeable) throw new WorldError("BAD_STRUCTURE");
+        // Resolve WHICH plot the footprint sits on (players may own several, P9).
+        const target = plotAt(input.x, input.y);
+        if (!target) throw new WorldError("OUT_OF_BOUNDS");
         await placeStructure(tx, characterId, {
+          plotIndex: target.index,
           defId: def.id,
           x: input.x,
           y: input.y,
@@ -239,6 +259,21 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
         });
         const done = await advanceQuests(tx, characterId, { type: "place_structure", defId: def.id }, day);
         return `Placed ${def.name}${questSuffix(done)}`;
+      }
+
+      case "listPlot": {
+        await listPlot(tx, characterId, input.plotIndex, input.price, input.currency || MARKET_CURRENCY);
+        return `Listed for ${input.price} Shards`;
+      }
+
+      case "unlistPlot": {
+        await unlistPlot(tx, characterId, input.plotIndex);
+        return "Listing removed";
+      }
+
+      case "buyPlot": {
+        const res = await buyPlot(tx, characterId, input.plotIndex, MAX_PLOTS, MARKET_FEE_BPS, new Date(now));
+        return `Bought plot · −${res.price} Shards`;
       }
 
       case "upgrade": {

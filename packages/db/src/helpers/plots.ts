@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import type { Tx } from "../client";
 import { TypedError } from "../errors";
@@ -11,23 +11,33 @@ export interface PlotRow {
   ownerId: string | null;
 }
 
+/** How many plots a character currently owns. */
+export async function ownedPlotCount(tx: Tx, characterId: string): Promise<number> {
+  const [{ n }] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(plots)
+    .where(eq(plots.ownerId, characterId));
+  return n;
+}
+
 /**
  * Claim an unclaimed plot for a player, server-authoritatively and dupe-proof:
  *
  *  - locks the target plot row (`FOR UPDATE`) so two simultaneous claims of the
  *    same plot serialize — the loser sees it already TAKEN;
- *  - enforces ONE plot per player (a DB partial-unique index backs this up);
+ *  - enforces the portfolio cap (`maxPlots`) — players may own several plots (P9);
  *  - charges the Shards fee through `moveShards`, which writes the ledger row in
  *    THIS transaction (throws `INSUFFICIENT_FUNDS` if short — rolls everything
  *    back).
  *
- * @throws TypedError `PLOT_NOT_FOUND` | `PLOT_TAKEN` | `ALREADY_OWN_PLOT` | `INSUFFICIENT_FUNDS`
+ * @throws TypedError `PLOT_NOT_FOUND` | `PLOT_TAKEN` | `PLOT_CAP_REACHED` | `INSUFFICIENT_FUNDS`
  */
 export async function claimPlot(
   tx: Tx,
   characterId: string,
   plotIndex: number,
   feeShards: number,
+  maxPlots: number,
   at: Date,
 ): Promise<PlotRow> {
   const [plot] = await tx
@@ -38,13 +48,9 @@ export async function claimPlot(
   if (!plot) throw new TypedError("PLOT_NOT_FOUND", `no plot #${plotIndex}`);
   if (plot.ownerId) throw new TypedError("PLOT_TAKEN", `plot #${plotIndex} is owned`);
 
-  // One plot per player at MVP (the partial-unique index is the hard guarantee;
-  // this gives a clean error before we try to write).
-  const [{ owned }] = await tx
-    .select({ owned: sql<number>`count(*)::int` })
-    .from(plots)
-    .where(eq(plots.ownerId, characterId));
-  if (owned > 0) throw new TypedError("ALREADY_OWN_PLOT", "player already owns a plot");
+  if ((await ownedPlotCount(tx, characterId)) >= maxPlots) {
+    throw new TypedError("PLOT_CAP_REACHED", `cannot own more than ${maxPlots} plots`);
+  }
 
   await moveShards(tx, characterId, -feeShards, "plot_claim", plot.id);
 
@@ -56,11 +62,11 @@ export async function claimPlot(
   return { id: plot.id, plotIndex: plot.plotIndex, ownerId: characterId };
 }
 
-/** A convenience the API uses for the "you already own a plot?" guard. */
-export async function ownedPlotIndex(tx: Tx, characterId: string): Promise<number | null> {
-  const [row] = await tx
+/** The plot indices a character owns (sorted) — for the player's portfolio view. */
+export async function ownedPlotIndexes(tx: Tx, characterId: string): Promise<number[]> {
+  const rows = await tx
     .select({ plotIndex: plots.plotIndex })
     .from(plots)
-    .where(and(eq(plots.ownerId, characterId), isNotNull(plots.ownerId)));
-  return row?.plotIndex ?? null;
+    .where(eq(plots.ownerId, characterId));
+  return rows.map((r) => r.plotIndex).sort((a, b) => a - b);
 }

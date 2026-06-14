@@ -11,6 +11,7 @@ export * from "./farm";
 export * from "./plots";
 export * from "./structures";
 export * from "./quests";
+export * from "./market";
 
 /** Bumped when content schemas change, so caches can be invalidated. */
 export const CONTENT_VERSION = "0.0.0" as const;

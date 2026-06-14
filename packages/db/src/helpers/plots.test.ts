@@ -28,7 +28,7 @@ describe("claimPlot", () => {
     const id = await seedCharacter(t.db, 500);
     const idx = await seedPlot();
 
-    const row = await t.db.transaction((tx) => claimPlot(tx, id, idx, 40, new Date()));
+    const row = await t.db.transaction((tx) => claimPlot(tx, id, idx, 40, 8, new Date()));
     expect(row.ownerId).toBe(id);
 
     const [plot] = await t.db.select().from(plots).where(eq(plots.plotIndex, idx));
@@ -44,23 +44,28 @@ describe("claimPlot", () => {
     expect(rows[0].reason).toBe("plot_claim");
   });
 
-  it("rejects claiming a second plot (one per player)", async () => {
+  it("allows owning MULTIPLE plots up to the cap, then rejects past it (P9)", async () => {
     const id = await seedCharacter(t.db, 500);
     const a = await seedPlot();
     const b = await seedPlot();
-    await t.db.transaction((tx) => claimPlot(tx, id, a, 40, new Date()));
+    const c = await seedPlot();
+    // cap of 2: claim two, third is rejected
+    await t.db.transaction((tx) => claimPlot(tx, id, a, 0, 2, new Date()));
+    await t.db.transaction((tx) => claimPlot(tx, id, b, 0, 2, new Date()));
     await expect(
-      t.db.transaction((tx) => claimPlot(tx, id, b, 40, new Date())),
-    ).rejects.toMatchObject({ code: "ALREADY_OWN_PLOT" });
+      t.db.transaction((tx) => claimPlot(tx, id, c, 0, 2, new Date())),
+    ).rejects.toMatchObject({ code: "PLOT_CAP_REACHED" });
+    const owned = await t.db.select().from(plots).where(eq(plots.ownerId, id));
+    expect(owned).toHaveLength(2);
   });
 
   it("rejects claiming someone else's plot", async () => {
     const owner = await seedCharacter(t.db, 500);
     const other = await seedCharacter(t.db, 500);
     const idx = await seedPlot();
-    await t.db.transaction((tx) => claimPlot(tx, owner, idx, 40, new Date()));
+    await t.db.transaction((tx) => claimPlot(tx, owner, idx, 40, 8, new Date()));
     await expect(
-      t.db.transaction((tx) => claimPlot(tx, other, idx, 40, new Date())),
+      t.db.transaction((tx) => claimPlot(tx, other, idx, 40, 8, new Date())),
     ).rejects.toMatchObject({ code: "PLOT_TAKEN" });
   });
 
@@ -68,7 +73,7 @@ describe("claimPlot", () => {
     const id = await seedCharacter(t.db, 10);
     const idx = await seedPlot();
     await expect(
-      t.db.transaction((tx) => claimPlot(tx, id, idx, 40, new Date())),
+      t.db.transaction((tx) => claimPlot(tx, id, idx, 40, 8, new Date())),
     ).rejects.toMatchObject({ code: "INSUFFICIENT_FUNDS" });
     const [plot] = await t.db.select().from(plots).where(eq(plots.plotIndex, idx));
     expect(plot.ownerId).toBeNull();
@@ -80,7 +85,7 @@ describe("claimPlot", () => {
       Array.from({ length: 5 }, () => seedCharacter(t.db, 500)),
     );
     const results = await Promise.allSettled(
-      ids.map((id) => t.db.transaction((tx) => claimPlot(tx, id, idx, 40, new Date()))),
+      ids.map((id) => t.db.transaction((tx) => claimPlot(tx, id, idx, 40, 8, new Date()))),
     );
     const won = results.filter((r) => r.status === "fulfilled");
     const lost = results.filter(

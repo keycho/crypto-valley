@@ -55,6 +55,7 @@ export async function placeStructure(
   tx: Tx,
   characterId: string,
   params: {
+    plotIndex: number;
     defId: string;
     x: number;
     y: number;
@@ -65,11 +66,16 @@ export async function placeStructure(
     cost: StructureCost;
   },
 ): Promise<StructureRow> {
-  const { defId, x, y, w, h, rotation, tier, cost } = params;
+  const { plotIndex, defId, x, y, w, h, rotation, tier, cost } = params;
 
-  // The player owns at most one plot (partial-unique index); lock it.
-  const [plot] = await tx.select().from(plots).where(eq(plots.ownerId, characterId)).for("update");
-  if (!plot) throw new TypedError("NO_PLOT", "you do not own a plot");
+  // Build on a SPECIFIC plot (players may own several, P9); lock it + verify owner.
+  const [plot] = await tx
+    .select()
+    .from(plots)
+    .where(eq(plots.plotIndex, plotIndex))
+    .for("update");
+  if (!plot) throw new TypedError("NO_PLOT", "no such plot");
+  if (plot.ownerId !== characterId) throw new TypedError("NOT_PLOT_OWNER", "not your plot");
 
   if (x < plot.x || y < plot.y || x + w > plot.x + plot.w || y + h > plot.y + plot.h) {
     throw new TypedError("OUT_OF_BOUNDS", "structure must sit inside your plot");
