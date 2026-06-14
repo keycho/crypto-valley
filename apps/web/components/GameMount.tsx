@@ -8,6 +8,7 @@ import { CharacterCreate } from "../hud/CharacterCreate";
 import { Hud } from "../hud/Hud";
 import { useFarmStore } from "../stores/farm";
 import { useMpStore } from "../stores/mp";
+import { useWorldStore } from "../stores/world";
 
 /**
  * Mounts the Phaser game once the player has created a character and entered the
@@ -24,6 +25,7 @@ export default function GameMount() {
     const w = window as unknown as Record<string, unknown>;
     w.__cvFarmStore = useFarmStore;
     w.__cvMpStore = useMpStore;
+    w.__cvWorldStore = useWorldStore;
     w.__cvEnter = async (name: string, sheet: string): Promise<void> => {
       const id = await createCharacter(name, { sheet });
       useFarmStore.getState().patch({ characterId: id });

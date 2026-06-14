@@ -91,17 +91,40 @@
 - Multiplayer/chat/farm-warp/collision all preserved (3-tab suite green).
   Hero shots: docs/screenshots/town-island-{noon,dusk}.png.
 
+## Done — P6: Land plots — claim, develop, upgrade, own
+
+- The island is divided into a fixed ring of **12 claimable 6×6 plots** (content
+  `PLOTS`, marked in the town `objects` layer; the map generator lays a foundation
+  pad + clears decoration under each). The decorative houses were removed — the
+  plots ARE the buildings now.
+- Schema: `plots` (plot_index, owner_id nullable, tier, claimed_at, x/y/w/h;
+  one-plot-per-owner partial-unique index + tier CHECK) and `world_nodes` (shared
+  gather respawn). Migration `0001_sticky_lake` committed.
+- Server-authoritative + dupe-proof DB helpers: `claimPlot` (row-locked, one per
+  owner, Shards fee via `moveShards` — ledgered) and `upgradePlot` (locks, computes
+  next tier, consumes wood/stone via `moveItems` + Shards via `moveShards`, atomic).
+  Tests incl. a 5-way concurrent claim race → exactly one winner.
+- Tier ladder in `packages/content` (empty → shack → cottage → house → manor →
+  mansion), escalating wood/stone/shards. Synthesized 6-frame building spritesheet
+  (stake → mansion, the mansion bearing the town's scarce cold glow) + 4-frame
+  gather sheet (tree/stump/rock/rubble).
+- Earn loop: choppable trees (→wood) + mineable rocks (→stone) on the island,
+  same energy/range/server-validation pattern as farming; respawn on the game-day.
+- API `/world/state` + `/world/act` (claim/upgrade/chop/mine); client
+  `TownController` (renders plots, per-tier buildings, owner nameplates, gather
+  nodes; Space + the HUD `PlotPanel` drive validated actions; polls so everyone
+  sees upgrades). `content` made browser-safe (JSON import, no `node:fs`).
+- Verified: claim spends Shards + shows a nameplate; can't claim a 2nd or someone
+  else's; chop/mine fill wood/stone; the full tier ladder to mansion consumes
+  materials + Shards (ledgered) and the sprite grows; a second client sees the
+  mansion and it **persists after the owner disconnects**; multiplayer/chat/farm
+  preserved. Screenshots: docs/screenshots/p6-plot*.png. typecheck/test/lint green.
+
 ## Next session
 
-- [ ] **P5b — meme-creature character system**
+- [ ] **P7 — plot trading + world expansion (new islands)**
 
-  Replace the LimeZu human avatars with the game's own meme-creature characters
-  (design + sprite sheets + the existing 4-dir/animation + appearance pipeline),
-  swapping into the P4 character-creation + net rendering cleanly.
-
-  WS protocol (hello/move/snap/chat subset) in `packages/shared` with Zod schemas.
-  game-server: single Town room, 10 Hz tick, speed+collision validation against the
-  same `town.tmj`, dirty-entity snapshot broadcast. Client: dev-token connect, move
-  intents ≤15/s, remote players interpolated 100 ms back, local prediction with snap
-  reconciliation, zone-local chat box. Acceptance: two browsers see each other move
-  smoothly; chat works; a teleport-hack message is rejected by the server.
+  Let players sell/transfer plots to each other (server-authoritative + ledgered —
+  the schema already carries `owner_id`, so it slots on cleanly), and expand the
+  world beyond the single town island (additional islands/zones, travel between
+  them, more plots to claim).

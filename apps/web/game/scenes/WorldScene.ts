@@ -14,6 +14,7 @@ import {
 import { ambientColorAt, LIGHT_REGISTRY, type LightKind, nightnessAt } from "../dayCurve";
 import { FarmController } from "../FarmController";
 import { RemotePlayer } from "../RemotePlayer";
+import { TownController } from "../TownController";
 import { CvNet } from "../systems/net";
 import { useFarmStore, type Zone } from "../../stores/farm";
 import { useMpStore } from "../../stores/mp";
@@ -50,6 +51,7 @@ export class WorldScene extends Phaser.Scene {
   private playerShadow!: Phaser.GameObjects.Image;
   private zone: Zone = "town";
   private farm?: FarmController;
+  private town?: TownController;
   private tileset!: Phaser.Tilemaps.Tileset;
   private warps: Warp[] = [];
   private warpLocked = true; // released once the player steps off the entry warp
@@ -92,6 +94,7 @@ export class WorldScene extends Phaser.Scene {
     this.terminal = undefined;
     this.managedLights = [];
     this.farm = undefined;
+    this.town = undefined;
     this.warps = [];
     this.warpLocked = true;
     this.disconnectNet();
@@ -230,6 +233,18 @@ export class WorldScene extends Phaser.Scene {
       );
     }
 
+    // ---- town plots + gathering (town zone only) -----------------------------
+    if (this.zone === "town") {
+      this.town = new TownController(this, this.lightingOn, () => ({
+        tx: Math.floor(this.player.x / TILE_SIZE),
+        ty: Math.floor(this.player.y / TILE_SIZE),
+      }));
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.town?.destroy();
+        this.town = undefined;
+      });
+    }
+
     // ---- shared-town multiplayer (town zone only) ----------------------------
     const mp = useMpStore.getState();
     if (this.zone === "town" && mp.entered) {
@@ -312,6 +327,7 @@ export class WorldScene extends Phaser.Scene {
     this.updateTerminal(delta);
     this.updateFps(delta);
     this.farm?.update(delta);
+    this.town?.update(delta);
     this.updateNet();
     this.updateStarfield(delta);
     this.checkWarps();
@@ -347,6 +363,8 @@ export class WorldScene extends Phaser.Scene {
     if (this.warpLocked) return;
     this.warpLocked = true;
     this.farm = undefined;
+    this.town?.destroy();
+    this.town = undefined;
     gameBus.off("chatSend", this.onChatSend);
     this.disconnectNet();
     this.scene.restart({ zone: on.to });

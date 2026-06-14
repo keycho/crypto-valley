@@ -8,6 +8,7 @@ import { Hotbar } from "./Hotbar";
 import { HudBridge } from "./HudBridge";
 import { Inventory } from "./Inventory";
 import { Online } from "./Online";
+import { PlotPanel } from "./PlotPanel";
 import { Toast } from "./Toast";
 import { useHotbarKeys } from "./useHotbarKeys";
 
@@ -56,8 +57,9 @@ export function Hud() {
             textAlign: "right",
           }}
         >
-          WASD move · Space use · 1–3 tool · Enter chat
+          WASD move · Space use/claim/chop · 1–3 tool · I bag · Enter chat
         </div>
+        <PlotPanel />
         <Inventory />
       </div>
     </>

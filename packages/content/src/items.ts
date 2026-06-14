@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+// JSON import (not node:fs) so the content package stays browser-safe — the web
+// client imports this package for plot/tier data (P6).
+import itemsJson from "../items.json";
 
 export type ItemCategory =
   | "resource"
@@ -22,9 +23,5 @@ export interface ItemDef {
   meta: Record<string, unknown>;
 }
 
-const itemsPath = fileURLToPath(new URL("../items.json", import.meta.url));
-
 /** The static starter item catalog. */
-export const ITEMS: readonly ItemDef[] = JSON.parse(
-  readFileSync(itemsPath, "utf8"),
-) as ItemDef[];
+export const ITEMS: readonly ItemDef[] = itemsJson as unknown as readonly ItemDef[];

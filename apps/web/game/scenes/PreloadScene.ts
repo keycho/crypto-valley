@@ -52,6 +52,16 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 48,
     });
+    // P6 plot buildings: 6 frames (tier 0 stake .. tier 5 mansion), bottom-anchored.
+    this.load.spritesheet("plots", "/assets/sprites/plots.png", {
+      frameWidth: 96,
+      frameHeight: 128,
+    });
+    // P6 gather nodes: tree | stump | rock | rubble.
+    this.load.spritesheet("gather", "/assets/sprites/gather.png", {
+      frameWidth: 32,
+      frameHeight: 48,
+    });
   }
 
   create(): void {

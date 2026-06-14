@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 
+import { gameBus } from "./bus";
 import { BootScene } from "./scenes/BootScene";
 import { PreloadScene } from "./scenes/PreloadScene";
 import { WorldScene } from "./scenes/WorldScene";
@@ -32,8 +33,11 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     },
     scene: [BootScene, PreloadScene, WorldScene],
   });
-  // Dev-only handle for E2E/manual checks; stripped from production builds.
-  if (process.env.NODE_ENV !== "production") window.__cvGame = game;
+  // Dev-only handles for E2E/manual checks; stripped from production builds.
+  if (process.env.NODE_ENV !== "production") {
+    window.__cvGame = game;
+    window.__cvBus = gameBus;
+  }
   return game;
 }
 
@@ -41,5 +45,7 @@ declare global {
   interface Window {
     /** Dev-only handle for E2E checks; never set in production builds. */
     __cvGame?: Phaser.Game;
+    /** Dev-only event bus handle (claim/upgrade emits in E2E). */
+    __cvBus?: typeof gameBus;
   }
 }

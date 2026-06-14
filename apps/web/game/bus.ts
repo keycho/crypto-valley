@@ -12,6 +12,10 @@ export type GameEvents = {
   fps: { fps: number };
   /** React chat input -> game server (relayed to the town). */
   chatSend: { msg: string };
+  /** HUD "Claim" button -> TownController (server-authoritative claim). */
+  plotClaim: { index: number };
+  /** HUD "Upgrade" button -> TownController (server-authoritative upgrade). */
+  plotUpgrade: { index: number };
 };
 
 export const gameBus = mitt<GameEvents>();

@@ -16,7 +16,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { TOWN_WARP_TO_FARM } from "@crypto-valley/content";
+import { GATHER_NODES, PLOT_H, PLOT_W, PLOTS, TOWN_WARP_TO_FARM } from "@crypto-valley/content";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const TILESET_DIR = join(here, "../public/assets/tilesets");
@@ -111,6 +111,17 @@ for (let y = 0; y < H; y++) {
   for (let x = 0; x < W; x++) land[at(x, y)] = isLandRaw(x, y);
 }
 
+// Claimable PLOTS (P6) are developed parcels: force solid ground under each so a
+// plot never floats over the void, and keep decoration out of them (the client
+// draws the parcel outline + per-tier building). Positions come from content.
+const onPlot = (x: number, y: number): boolean =>
+  PLOTS.some((p) => x >= p.x && x < p.x + PLOT_W && y >= p.y && y < p.y + PLOT_H);
+for (const p of PLOTS) {
+  for (let dy = 0; dy < PLOT_H; dy++) {
+    for (let dx = 0; dx < PLOT_W; dx++) land[at(p.x + dx, p.y + dy)] = true;
+  }
+}
+
 // ============================================================ regions / streets
 const PLAZA = { x0: 24, y0: 18, x1: 37, y1: 29 };
 const ROAD_VX = 30; // vertical street cols 30-31
@@ -187,34 +198,17 @@ function foundation(x: number, y: number, paved: boolean): void {
   if (ground[at(x, y)] === EMPTY) ground[at(x, y)] = gid(paved ? "concrete" : "grass");
 }
 
-function stampBuilding(name: string, tx: number, ty: number): void {
-  const { w, h } = objSize(name);
-  const aboveRows = Math.max(1, Math.min(h - 1, Math.round(h * 0.5)));
+/** True if a w×h footprint at (tx,ty) overlaps any plot parcel. */
+function footprintOnPlot(tx: number, ty: number, w: number, h: number): boolean {
   for (let dy = 0; dy < h; dy++) {
-    for (let dx = 0; dx < w; dx++) {
-      const x = tx + dx;
-      const y = ty + dy;
-      if (!inBounds(x, y)) throw new Error(`${name} OOB at ${x},${y}`);
-      foundation(x, y, true);
-      const g = objGid(name, dx, dy);
-      if (dy < aboveRows) above[at(x, y)] = g;
-      else groundDetail[at(x, y)] = g;
-      collision[at(x, y)] = MARK;
-    }
+    for (let dx = 0; dx < w; dx++) if (onPlot(tx + dx, ty + dy)) return true;
   }
-  lights.push({
-    id: markerId++,
-    name: `win_${name}_${tx}`,
-    type: "light",
-    x: px(tx + w / 2),
-    y: px(ty + h - 2),
-    kind: "window",
-  });
-  emitShadow(tx, ty + h, w, 14, `${name}_${tx}_${ty}`);
+  return false;
 }
 
 function stampTree(name: string, tx: number, ty: number): void {
   const { w, h } = objSize(name);
+  if (footprintOnPlot(tx, ty, w, h)) return; // keep parcels clear
   for (let dy = 0; dy < h; dy++) {
     for (let dx = 0; dx < w; dx++) {
       const x = tx + dx;
@@ -234,6 +228,7 @@ function stampTree(name: string, tx: number, ty: number): void {
 
 function stampProp(name: string, tx: number, ty: number, aboveTop?: boolean): void {
   const { w, h } = objSize(name);
+  if (footprintOnPlot(tx, ty, w, h)) return; // keep parcels clear
   const topIsAbove = aboveTop ?? h >= 3;
   for (let dy = 0; dy < h; dy++) {
     for (let dx = 0; dx < w; dx++) {
@@ -250,14 +245,9 @@ function stampProp(name: string, tx: number, ty: number, aboveTop?: boolean): vo
   emitShadow(tx, ty + h, w, 7, `${name}_${tx}_${ty}`);
 }
 
-// ---- composition: buildings ring the plaza (north + south streets) ----------
-stampBuilding("market_med", 14, 9); // x14-20
-stampBuilding("junk_shack", 32, 9); // x32-37
-stampBuilding("market_small", 40, 10); // x40-44
-stampBuilding("power_house", 22, 8); // x22-28 (NW of plaza)
-stampBuilding("container_house", 16, 34); // south district
-stampBuilding("junk_shack", 27, 35); // south district
-stampBuilding("container_house", 40, 34); // south-east
+// ---- composition: the buildings are now the CLAIMABLE PLOTS (P6) ------------
+// A ring of 12 empty parcels around the plaza; players claim + build them up,
+// so the client renders the per-tier building (no buildings are baked here).
 
 // ---- trees: plaza frame + overgrowth thickening toward the rim --------------
 const trees: Array<[string, number, number]> = [
@@ -312,7 +302,8 @@ const WEEDS = ["weed_a", "weed_b", "shrub_a", "shrub_b"];
 const FLOWERS = ["flower_a", "flower_b", "flower_c"];
 const CRACKS = ["crack_a", "crack_b"];
 function scatterDetail(x: number, y: number): void {
-  if (!land[at(x, y)] || groundDetail[at(x, y)] !== EMPTY || collision[at(x, y)] !== EMPTY) return;
+  if (!land[at(x, y)] || onPlot(x, y) || groundDetail[at(x, y)] !== EMPTY || collision[at(x, y)] !== EMPTY)
+    return;
   const isGrass = ground[at(x, y)] === gid("grass") || ground[at(x, y)] === gid("grass_b");
   const nearHot = inPlaza(x, y) || onRoad(x, y);
   const rimward = radial(x, y) > 0.62; // overgrowth thickens toward the rim
@@ -334,7 +325,7 @@ for (const [x, y] of [
   [31, 25],
   [27, 24],
 ] as Array<[number, number]>) {
-  if (land[at(x, y)] && collision[at(x, y)] === EMPTY && groundDetail[at(x, y)] === EMPTY) {
+  if (land[at(x, y)] && !onPlot(x, y) && collision[at(x, y)] === EMPTY && groundDetail[at(x, y)] === EMPTY) {
     groundDetail[at(x, y)] = gid(chance(0.5) ? "manhole" : "grate");
   }
 }
@@ -346,7 +337,7 @@ for (let by = 2; by + 3 < H; by += 4) {
     let occupied = 0;
     for (let dy = 0; dy < 4; dy++) {
       for (let dx = 0; dx < 4; dx++) {
-        if (!land[at(bx + dx, by + dy)]) continue;
+        if (!land[at(bx + dx, by + dy)] || onPlot(bx + dx, by + dy)) continue;
         landCells++;
         if (groundDetail[at(bx + dx, by + dy)] !== EMPTY || collision[at(bx + dx, by + dy)] !== EMPTY) {
           occupied++;
@@ -361,6 +352,49 @@ for (let by = 2; by + 3 < H; by += 4) {
       groundDetail[at(cx, cy)] = gid(pavement ? pick([...CRACKS, "weed_a"]) : pick(WEEDS));
     }
   }
+}
+
+// ============================================================ plot parcels
+// Pave each claimable plot as a clean, decoration-free pad (the client draws the
+// outline + per-tier building on top) and emit a "plot" marker carrying the
+// content index + footprint. Plots are walkable: no baked collision, so the
+// authoritative game-server (which only knows the static map) and the runtime
+// tier never disagree.
+for (const p of PLOTS) {
+  for (let dy = 0; dy < PLOT_H; dy++) {
+    for (let dx = 0; dx < PLOT_W; dx++) {
+      const x = p.x + dx;
+      const y = p.y + dy;
+      ground[at(x, y)] = gid("concrete");
+      groundDetail[at(x, y)] = EMPTY;
+      above[at(x, y)] = EMPTY;
+      collision[at(x, y)] = EMPTY;
+    }
+  }
+  markers.push({
+    id: markerId++,
+    name: `plot_${p.index}`,
+    type: "plot",
+    kind: String(p.index),
+    x: px(p.x),
+    y: px(p.y),
+    w: PLOT_W * TILE,
+    h: PLOT_H * TILE,
+  });
+}
+
+// gathering nodes — choppable trees / mineable rocks (client renders the sprite
+// + depleted state from /world/state; the marker just carries id + kind).
+for (const n of GATHER_NODES) {
+  markers.push({
+    id: markerId++,
+    name: n.id,
+    type: "gather",
+    kind: n.kind,
+    to: n.id, // reuse the 'to' property channel to carry the node id
+    x: px(n.x) + TILE / 2,
+    y: px(n.y) + TILE,
+  });
 }
 
 // ============================================================ edge wall

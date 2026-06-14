@@ -328,6 +328,218 @@ function writeTerminalSheet(): void {
   writeFileSync(join(spriteDir, "terminal.png"), PNG.sync.write(sheet));
 }
 
+// ---- P6: per-tier plot buildings + gathering nodes --------------------------
+// Drawn directly in the §2 "Overgrown Terminal" palette (warm walls, mossy
+// roofs, amber windows; the mansion gets the town's only other scarce cold
+// glow). Each ships as its own spritesheet (NOT in the static atlas, NOT
+// palette-shifted) so the client can pick a frame by tier / depleted state.
+const HP = {
+  wall: [200, 160, 107, 255] as const,
+  wallSh: [150, 120, 82, 255] as const,
+  roof: [78, 122, 76, 255] as const,
+  roofSh: [50, 86, 54, 255] as const,
+  edge: [44, 34, 26, 255] as const,
+  wood: [92, 74, 61, 255] as const,
+  win: [26, 29, 36, 255] as const,
+  winLit: [232, 179, 106, 255] as const,
+  glow: [52, 211, 153, 255] as const,
+  glowHi: [167, 243, 208, 255] as const,
+  trunk: [92, 64, 44, 255] as const,
+  trunkSh: [64, 44, 30, 255] as const,
+  leaf: [86, 132, 72, 255] as const,
+  leafSh: [54, 94, 52, 255] as const,
+  leafHi: [126, 170, 100, 255] as const,
+  stone: [140, 130, 118, 255] as const,
+  stoneSh: [96, 88, 78, 255] as const,
+  stoneHi: [184, 176, 162, 255] as const,
+  ore: [110, 190, 168, 255] as const,
+} as const;
+type RGBA = readonly [number, number, number, number];
+const c = (x: RGBA): [number, number, number, number] => [x[0], x[1], x[2], x[3]];
+
+function outlineRect(p: PNG, x: number, y: number, w: number, h: number, col: RGBA): void {
+  fillRect(p, x, y, w, 1, c(col));
+  fillRect(p, x, y + h - 1, w, 1, c(col));
+  fillRect(p, x, y, 1, h, c(col));
+  fillRect(p, x + w - 1, y, 1, h, c(col));
+}
+/** Gable roof: rows widening from a narrow ridge down to `baseW`, centred on cx. */
+function gable(p: PNG, cx: number, topY: number, baseW: number, rh: number): void {
+  for (let i = 0; i < rh; i++) {
+    const w = Math.max(2, Math.round((baseW * (i + 1)) / rh));
+    const x0 = Math.round(cx - w / 2);
+    fillRect(p, x0, topY + i, w, 1, c(i < rh / 3 ? HP.roof : HP.roofSh));
+    setPx(p, x0, topY + i, c(HP.edge));
+    setPx(p, x0 + w - 1, topY + i, c(HP.edge));
+  }
+  fillRect(p, Math.round(cx - baseW / 2), topY + rh - 1, baseW, 1, c(HP.edge)); // eave
+}
+
+interface BuildingParams {
+  w: number;
+  wallH: number;
+  roofH: number;
+  floors: number;
+  cols: number;
+  glow?: boolean;
+}
+const TIER_PARAMS: Record<number, BuildingParams> = {
+  1: { w: 38, wallH: 24, roofH: 12, floors: 1, cols: 1 },
+  2: { w: 50, wallH: 30, roofH: 16, floors: 1, cols: 2 },
+  3: { w: 62, wallH: 40, roofH: 20, floors: 1, cols: 3 },
+  4: { w: 76, wallH: 54, roofH: 22, floors: 2, cols: 3 },
+  5: { w: 88, wallH: 70, roofH: 28, floors: 2, cols: 4, glow: true },
+};
+
+function drawBuilding(p: PNG, cx: number, baseY: number, t: BuildingParams): void {
+  const x0 = Math.round(cx - t.w / 2);
+  const wallTop = baseY - t.wallH;
+  // body + a shaded right strip for a little form
+  fillRect(p, x0, wallTop, t.w, t.wallH, c(HP.wall));
+  fillRect(p, x0 + Math.round(t.w * 0.68), wallTop, Math.round(t.w * 0.32), t.wallH, c(HP.wallSh));
+  outlineRect(p, x0, wallTop, t.w, t.wallH, HP.edge);
+  if (t.floors === 2) {
+    const midY = wallTop + Math.round(t.wallH / 2);
+    fillRect(p, x0, midY, t.w, 2, c(HP.wood));
+    fillRect(p, x0, midY, t.w, 1, c(HP.edge));
+  }
+  // door, centred at the base
+  const dw = 10;
+  const dh = Math.min(16, t.wallH - (t.floors === 2 ? Math.round(t.wallH / 2) : 6));
+  const dx = Math.round(cx - dw / 2);
+  fillRect(p, dx, baseY - dh, dw, dh, c(HP.wood));
+  outlineRect(p, dx, baseY - dh, dw, dh, HP.edge);
+  setPx(p, dx + dw - 3, baseY - Math.round(dh / 2), c(HP.winLit)); // knob
+  // windows: a cols×floors grid, skipping the door column on the ground floor
+  const winW = 8;
+  const winH = 9;
+  for (let f = 0; f < t.floors; f++) {
+    const floorTop = wallTop + (t.floors === 2 ? f * Math.round(t.wallH / 2) : 0);
+    const wy = floorTop + 5;
+    for (let col = 0; col < t.cols; col++) {
+      const wx = Math.round(x0 + ((col + 1) * t.w) / (t.cols + 1) - winW / 2);
+      const groundFloor = f === t.floors - 1;
+      if (groundFloor && wx < dx + dw && wx + winW > dx) continue; // don't sit on the door
+      fillRect(p, wx, wy, winW, winH, c(HP.win));
+      fillRect(p, wx + 1, wy + 1, winW - 2, winH - 3, c(HP.winLit));
+      outlineRect(p, wx, wy, winW, winH, HP.edge);
+      fillRect(p, wx, wy + Math.round(winH / 2), winW, 1, c(HP.edge)); // muntin
+    }
+  }
+  // roof
+  gable(p, cx, wallTop - t.roofH, t.w + 8, t.roofH);
+  // chimney (house+)
+  if (t.wallH >= 38) {
+    const chX = x0 + Math.round(t.w * 0.74);
+    fillRect(p, chX, wallTop - t.roofH - 4, 5, t.roofH, c(HP.wood));
+    outlineRect(p, chX, wallTop - t.roofH - 4, 5, t.roofH, HP.edge);
+  }
+  // mansion: a finial with the town's scarce cold glow (the dead chain's mark)
+  if (t.glow) {
+    const ridgeY = wallTop - t.roofH;
+    fillRect(p, cx - 1, ridgeY - 8, 2, 8, c(HP.wood));
+    fillRect(p, cx - 2, ridgeY - 11, 4, 4, c(HP.glow));
+    setPx(p, cx - 1, ridgeY - 10, c(HP.glowHi));
+  }
+}
+
+/** Tier 0: an empty lot — a surveyor's stake + a small "for claim" sign. */
+function drawStake(p: PNG, cx: number, baseY: number): void {
+  fillRect(p, cx - 1, baseY - 18, 3, 18, c(HP.wood));
+  outlineRect(p, cx - 1, baseY - 18, 3, 18, HP.edge);
+  fillRect(p, cx - 9, baseY - 30, 20, 12, c(HP.wall));
+  outlineRect(p, cx - 9, baseY - 30, 20, 12, HP.edge);
+  fillRect(p, cx - 6, baseY - 26, 14, 1, c(HP.wood));
+  fillRect(p, cx - 6, baseY - 23, 10, 1, c(HP.wood));
+}
+
+function writePlotsSheet(): void {
+  const CW = 96;
+  const CH = 128;
+  const sheet = new PNG({ width: CW * 6, height: CH });
+  sheet.data.fill(0);
+  for (let tier = 0; tier < 6; tier++) {
+    const f = new PNG({ width: CW, height: CH });
+    f.data.fill(0);
+    if (tier === 0) drawStake(f, CW / 2, CH - 2);
+    else drawBuilding(f, CW / 2, CH - 2, TIER_PARAMS[tier]);
+    blit(sheet, f, tier * CW, 0);
+  }
+  const spriteDir = join(here, "../public/assets/sprites");
+  mkdirSync(spriteDir, { recursive: true });
+  writeFileSync(join(spriteDir, "plots.png"), PNG.sync.write(sheet));
+}
+
+// gathering: tree | stump | rock | rubble, 32x48 each, anchored bottom-centre.
+function drawTree(p: PNG, x0: number): void {
+  const cx = x0 + 16;
+  fillRect(p, cx - 2, 30, 4, 16, c(HP.trunk));
+  setPx(p, cx - 2, 30, c(HP.trunkSh));
+  fillRect(p, cx - 2, 44, 4, 2, c(HP.trunkSh));
+  // bushy canopy (overlapping blobs)
+  const blobs: Array<[number, number, number]> = [
+    [cx, 16, 11],
+    [cx - 7, 22, 8],
+    [cx + 7, 22, 8],
+    [cx, 26, 9],
+  ];
+  for (const [bx, by, r] of blobs) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        const shade = dy < -r / 3 ? HP.leafHi : dx > r / 3 ? HP.leafSh : HP.leaf;
+        setPx(p, bx + dx, by + dy, c(shade));
+      }
+    }
+  }
+}
+function drawStump(p: PNG, x0: number): void {
+  const cx = x0 + 16;
+  fillRect(p, cx - 4, 38, 8, 8, c(HP.trunk));
+  outlineRect(p, cx - 4, 38, 8, 8, HP.trunkSh);
+  fillRect(p, cx - 4, 38, 8, 2, c(HP.leafSh)); // mossy cut top
+  setPx(p, cx, 39, c(HP.trunkSh));
+}
+function drawRock(p: PNG, x0: number): void {
+  const cx = x0 + 16;
+  const boulder = (bx: number, by: number, w: number, h: number): void => {
+    fillRect(p, bx, by, w, h, c(HP.stone));
+    fillRect(p, bx, by, w, 2, c(HP.stoneHi));
+    fillRect(p, bx, by + h - 2, w, 2, c(HP.stoneSh));
+    outlineRect(p, bx, by, w, h, HP.edge);
+  };
+  boulder(cx - 9, 30, 18, 16);
+  boulder(cx - 2, 24, 12, 12);
+  setPx(p, cx + 3, 28, c(HP.ore));
+  setPx(p, cx + 4, 28, c(HP.ore));
+  setPx(p, cx - 5, 36, c(HP.ore));
+}
+function drawRubble(p: PNG, x0: number): void {
+  const cx = x0 + 16;
+  fillRect(p, cx - 8, 42, 16, 4, c(HP.stoneSh));
+  for (const [rx, ry, s] of [
+    [cx - 6, 40, 3],
+    [cx, 41, 4],
+    [cx + 5, 40, 3],
+  ] as Array<[number, number, number]>) {
+    fillRect(p, rx, ry, s, s, c(HP.stone));
+    outlineRect(p, rx, ry, s, s, HP.edge);
+  }
+}
+function writeGatherSheet(): void {
+  const CW = 32;
+  const CH = 48;
+  const sheet = new PNG({ width: CW * 4, height: CH });
+  sheet.data.fill(0);
+  drawTree(sheet, 0);
+  drawStump(sheet, CW);
+  drawRock(sheet, CW * 2);
+  drawRubble(sheet, CW * 3);
+  const spriteDir = join(here, "../public/assets/sprites");
+  mkdirSync(spriteDir, { recursive: true });
+  writeFileSync(join(spriteDir, "gather.png"), PNG.sync.write(sheet));
+}
+
 // crack tiles are 1x1 -> treat as singles appended after the file singles
 const synthSingles = synthObjects.filter((o) => o.png.width === TILE && o.png.height === TILE);
 const synthMulti = synthObjects.filter((o) => !(o.png.width === TILE && o.png.height === TILE));
@@ -405,7 +617,9 @@ writeFileSync(join(OUT_DIR, "town_tiles.manifest.json"), JSON.stringify(manifest
 
 writeTerminalSheet();
 writeCropSheet();
+writePlotsSheet();
+writeGatherSheet();
 
 console.log(`atlas ${COLS * TILE}x${ROWS * TILE} (${COLS}x${ROWS} tiles)`);
 console.log(`singles: ${singleSources.length}, objects: ${Object.keys(objectEntries).length}`);
-console.log(`wrote sprites/terminal.png + sprites/crop_bitberry.png`);
+console.log(`wrote sprites/{terminal,crop_bitberry,plots,gather}.png`);
