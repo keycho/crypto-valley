@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -164,6 +165,48 @@ export const machineJobs = pgTable(
   },
   (t) => [index("jobs_ready").on(t.structureId).where(sql`not ${t.collected}`)],
 );
+
+// ============ TOWN PLOTS (claimable land) ============
+
+/**
+ * The shared island's claimable building plots (P6). Rows mirror the fixed
+ * `PLOTS` grid in packages/content (seeded idempotently). Ownership + tier are
+ * mutated ONLY server-side, in a transaction, via the `claimPlot`/`upgradePlot`
+ * helpers (which ledger the Shards spend). `owner_id` null = unclaimed.
+ */
+export const plots = pgTable(
+  "plots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Stable content index — the key clients claim/upgrade against. */
+    plotIndex: integer("plot_index").notNull().unique(),
+    ownerId: uuid("owner_id").references(() => characters.id), // null = unclaimed
+    tier: integer("tier").notNull().default(0), // 0 empty .. 5 mansion
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    // Footprint (tiles), copied from content so the API needn't import the map.
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+    w: integer("w").notNull(),
+    h: integer("h").notNull(),
+  },
+  (t) => [
+    check("plots_tier_range", sql`${t.tier} between 0 and 5`),
+    // A player owns at most ONE plot at MVP — enforced in the DB, not just code.
+    uniqueIndex("plots_one_per_owner")
+      .on(t.ownerId)
+      .where(sql`${t.ownerId} is not null`),
+  ],
+);
+
+/**
+ * Shared-world gathering nodes (choppable trees / mineable rocks). A row exists
+ * only once a node has been harvested; `harvested_at` drives the respawn timer.
+ * Node positions/kinds live in packages/content (`GATHER_NODES`).
+ */
+export const worldNodes = pgTable("world_nodes", {
+  nodeId: text("node_id").primaryKey(),
+  harvestedAt: timestamp("harvested_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ============ ECONOMY ============
 

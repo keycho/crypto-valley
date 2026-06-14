@@ -23,5 +23,6 @@ export function makePong(): PongMessage {
 }
 
 export * from "./farm";
+export * from "./world";
 export * from "./protocol";
 export * from "./collision";

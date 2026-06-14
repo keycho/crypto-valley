@@ -107,6 +107,8 @@ export async function bootstrap(): Promise<{ characterId: string }> {
     await moveItems(tx, [
       { characterId, itemId: "hoe_t1", qty: 1 },
       { characterId, itemId: "watering_can_t1", qty: 1 },
+      { characterId, itemId: "axe_t1", qty: 1 },
+      { characterId, itemId: "pickaxe_t1", qty: 1 },
       { characterId, itemId: "seed_bitberry", qty: 20 },
     ]);
 
@@ -157,6 +159,8 @@ export async function createCharacter(
     await moveItems(tx, [
       { characterId, itemId: "hoe_t1", qty: 1 },
       { characterId, itemId: "watering_can_t1", qty: 1 },
+      { characterId, itemId: "axe_t1", qty: 1 },
+      { characterId, itemId: "pickaxe_t1", qty: 1 },
       { characterId, itemId: "seed_bitberry", qty: 20 },
     ]);
     return { characterId };

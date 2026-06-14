@@ -8,6 +8,7 @@
 export * from "./items";
 export * from "./crops";
 export * from "./farm";
+export * from "./plots";
 
 /** Bumped when content schemas change, so caches can be invalidated. */
 export const CONTENT_VERSION = "0.0.0" as const;

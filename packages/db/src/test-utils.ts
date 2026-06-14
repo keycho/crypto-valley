@@ -8,10 +8,12 @@ export async function seedCharacter(db: Database, shards = 500): Promise<string>
   const accountId = uuidv7();
   await db.insert(accounts).values({ id: accountId });
   const id = uuidv7();
+  // Name from the id's RANDOM tail — UUIDv7 heads are time-ordered and collide
+  // when characters are seeded in the same millisecond (e.g. parallel claims).
   await db.insert(characters).values({
     id,
     accountId,
-    name: `c${id.replace(/-/g, "").slice(0, 12)}`,
+    name: `c${id.replace(/-/g, "").slice(-12)}`,
     appearance: {},
     shards,
   });

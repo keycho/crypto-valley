@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import { z } from "zod";
 
 import { farmRoutes } from "./farm/routes";
+import { worldRoutes } from "./world/routes";
 
 // Validate runtime config at the boundary (CLAUDE.md: zod-validate inputs).
 const EnvSchema = z.object({
@@ -17,6 +18,7 @@ const app = Fastify({ logger: true });
 // Dev: the web app (localhost:3000) calls this API directly.
 await app.register(cors, { origin: true });
 await app.register(farmRoutes);
+await app.register(worldRoutes);
 
 app.get("/health", async () => HealthResponseSchema.parse({ ok: true }));
 
