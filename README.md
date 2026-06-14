@@ -1,12 +1,12 @@
 # Crypto Valley
 
-> A cozy MMO where players excavate the ruins of a lost blockchain civilization,
-> build a town that remembers them, and discover relics that become part of the
-> world's permanent history.
+> A cozy shared-world MMO where you claim land, work it, and build it up through
+> the ages — from a Stone-Age clearing to a year-3000 skyline. Your land is yours
+> to develop, flip, and show off as the whole world climbs the ages together.
 
-A 2D top-down multiplayer farming/archaeology game. This repository is a
-**pnpm + turborepo monorepo**. Design docs live in [`/docs`](./docs); agent rules
-live in [`CLAUDE.md`](./CLAUDE.md).
+A 2D top-down multiplayer farming/building MMO themed around **advancing through
+the ages**. This repository is a **pnpm + turborepo monorepo**. Design docs live
+in [`/docs`](./docs); agent rules live in [`CLAUDE.md`](./CLAUDE.md).
 
 > **Status:** M0 scaffold. No gameplay yet — this commit only proves the toolchain
 > (install / typecheck / test / dev) end to end.

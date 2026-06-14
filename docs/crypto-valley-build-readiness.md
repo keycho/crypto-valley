@@ -7,10 +7,10 @@
 
 The screenshot's look = 16px tiles, rich palette, heavy decoration layering, point-light night rendering. Code can replicate the *systems*; the tiles themselves are the bottleneck. Solo-dev plan, in order of leverage:
 
-1. **Buy a coherent base pack, don't generate or commission the base.** Strong candidates to evaluate on itch.io (check current licenses before purchase): *LimeZu Modern Interiors/Exteriors* (huge, modern-tech props — most cyberpunk-adaptable), *Sprout Lands* (farming/crops, very Stardew-warm), plus a cyberpunk/sci-fi prop pack for tech debris. One pack family = one coherent style; mixing packs is what makes indie games look like asset soup.
-2. **Palette-shift to own it.** Define the Crypto Valley palette (warm earth base + 3 neon accents: oracle-purple, terminal-green, signal-cyan) and batch-remap the purchased tiles with a palette-swap script (Aseprite CLI or a 50-line script — Claude Code task). This single step makes a stock pack read as *yours*.
-3. **Commission only hero assets** (5–10 items): the 10 NPC portrait sets, the 3 surface landmarks, the Static wall effect, player character base + outfit layers, logo. ~Budget one commission batch.
-4. **Corruption as a shader, not tiles:** the glitch/corruption look is a Phaser post-FX pipeline (chromatic aberration + scanline displacement keyed to the corruption field) over normal tiles — matches your existing dithered-glitch brand aesthetic and costs zero art.
+1. **Buy a coherent base pack, don't generate or commission the base.** Strong candidates to evaluate on itch.io (check current licenses before purchase): *LimeZu Modern Interiors/Exteriors* (huge, modern props — good for the modern age), *Sprout Lands* (farming/crops, very Stardew-warm), plus prop packs covering the other ages (rustic/medieval through future). One pack family = one coherent style; mixing packs is what makes indie games look like asset soup.
+2. **Palette-shift to own it.** Define the Crypto Valley **Warm Ages** palette (earthy natural greens, warm browns, golden light) and a per-age remap (stone → bronze → … → future), then batch-remap the purchased tiles with a palette-swap script (Aseprite CLI or a 50-line script — Claude Code task). The per-age palette transformation IS the visual identity — see `docs/art-bible.md`.
+3. **Commission only hero assets** (5–10 items): the 10 NPC portrait sets, a few age landmarks, the age-transition VFX, player character base + outfit layers, logo. ~Budget one commission batch.
+4. **Age transitions as an effect, not tiles:** when land/the world advances an age, a Phaser post-FX flourish (a warm light-bloom + dust/pollen motes radiating from the upgraded structure) plays over normal tiles — the one sanctioned "loud" moment (art-bible §6), and it costs zero new art.
 
 **Locked technical art constants (Claude Code needs these on day one):**
 - Tile size: **16px**, render scale 3x (logical viewport ~427×240 → crisp at 1280×720)
@@ -44,9 +44,9 @@ The screenshot's look = 16px tiles, rich palette, heavy decoration layering, poi
 ```markdown
 # Crypto Valley — agent instructions
 
-Cozy 2D top-down multiplayer farming/archaeology game. Stardew-like, post-collapse
-crypto-civilization setting. Phaser 3 + Next.js client, Node WS game server,
-Fastify API, Postgres (Drizzle), Redis.
+Cozy 2D top-down multiplayer farming/building MMO. Stardew-like, themed around
+advancing through the ages (Stone Age → year 3000). Phaser 3 + Next.js client,
+Node WS game server, Fastify API, Postgres (Drizzle), Redis.
 
 ## Source of truth
 Design docs live in /docs — READ THE RELEVANT DOC BEFORE IMPLEMENTING A SYSTEM:
@@ -59,7 +59,7 @@ Never implement anything on the DELAY list in scope-lock without being asked.
 ## Hard rules
 - Server-authoritative: client never mutates inventory, currency, tiles, or quest
   state locally. All economy mutations go through packages/db helpers
-  moveBits/moveItems/moveTokens which write ledger rows in the same transaction.
+  moveShards/moveItems/moveTokens which write ledger rows in the same transaction.
 - packages/sim and packages/worldgen are PURE (no IO, no Date.now() — time is a
   parameter). They are imported by client AND server. Determinism is sacred:
   same seed + inputs = same outputs, always. Add a test when you touch them.
@@ -92,7 +92,7 @@ Run these as **separate sessions/tasks in order** — each is one reviewable uni
 > Scaffold the monorepo per CLAUDE.md: pnpm workspaces + turborepo with apps/web (Next.js 14, TS strict), apps/api (Fastify+Zod), apps/game-server (Node + ws), and empty packages/{shared,sim,worldgen,db,content}. Shared tsconfig/eslint in packages/config. Add pnpm scripts: dev (all), typecheck, test (vitest), db:generate/migrate (drizzle, postgres URL from env). Acceptance: pnpm install && pnpm typecheck && pnpm dev boots all three apps with hello-world endpoints.
 
 **P1 — DB schema + helpers**
-> Implement the Drizzle schema from docs/crypto-valley-mvp.md §2 (accounts→ledger tables only; skip token/auction tables for now). Generate the initial migration. Implement packages/db helpers moveBits(tx, characterId, delta, reason, ref) and moveItems(tx, ops[]) with row locking ordered by PK, ledger writes in-transaction, and vitest integration tests against a local postgres (docker-compose file included) covering: concurrent moveItems can't dupe, negative-balance bits rejected. Acceptance: tests pass.
+> Implement the Drizzle schema from docs/crypto-valley-mvp.md §2 (accounts→ledger tables only; skip token/auction tables for now). Generate the initial migration. Implement packages/db helpers moveShards(tx, characterId, delta, reason, ref) and moveItems(tx, ops[]) with row locking ordered by PK, ledger writes in-transaction, and vitest integration tests against a local postgres (docker-compose file included) covering: concurrent moveItems can't dupe, negative-balance shards rejected. Acceptance: tests pass.
 
 **P2 — Phaser shell in Next.js**
 > In apps/web, mount Phaser 3.80 via next/dynamic ssr:false on /play. Boot/Preload/World scenes. Load the placeholder Tiled map at assets/maps/town.tmj (create a 60x50 placeholder with the 6 standard layers using the tileset at assets-src/[PACK]). 16px tiles, 3x zoom, pixelArt:true, arcade physics, WASD+arrows movement with collision layer, y-sorted player vs 'above' layer. React HUD overlay (Zustand) showing a clock placeholder. Acceptance: walkable town in browser, 60fps, no sub-pixel jitter.

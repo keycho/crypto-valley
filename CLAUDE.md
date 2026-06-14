@@ -1,13 +1,20 @@
 # Crypto Valley — agent instructions
 
-A cozy 2D top-down multiplayer farming/archaeology game. Stardew-like, set in the
-ruins of a collapsed blockchain civilization. Stack: **Phaser 3 + Next.js 14**
-client, **Node + ws** game server, **Fastify 4** API, **PostgreSQL via Drizzle**,
-TypeScript strict everywhere.
+A cozy 2D top-down multiplayer farming/building MMO. Stardew-like, themed around
+**advancing through the ages** — every player claims land and grows it from the
+Stone Age toward the year 3000, while the whole world advances together. Stack:
+**Phaser 3 + Next.js 14** client, **Node + ws** game server, **Fastify 4** API,
+**PostgreSQL via Drizzle**, TypeScript strict everywhere.
 
-> Canonical pitch (use everywhere): _A cozy MMO where players excavate the ruins of
-> a lost blockchain civilization, build a town that remembers them, and discover
-> relics that become part of the world's permanent history._
+> Canonical pitch (use everywhere): _A cozy shared-world MMO where you claim land,
+> work it, and build it up through the ages — from a Stone-Age clearing to a
+> year-3000 skyline. Your land is yours to develop, flip, and show off as the
+> whole world climbs the ages together._
+
+The visual identity is the **Warm Ages** look + the per-age palette transformation
+(see `docs/art-bible.md`). The old "collapsed blockchain civilization / Overgrown
+Terminal / archaeology" theme is **superseded** — do not reintroduce dead-civ,
+ruins-excavation, relics/data-nodes, the Cascade, or the Static.
 
 ## Source of truth
 

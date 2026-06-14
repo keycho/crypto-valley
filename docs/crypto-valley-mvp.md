@@ -1,7 +1,12 @@
 # CRYPTO VALLEY — MVP Technical Design & Architecture
 **Version 0.9 (Pre-production) · June 2026**
-**Genre:** Cozy multiplayer farming/life sim · **Setting:** Post-collapse digital civilization
-**Design law #1:** The game must be fun with every token removed. Crypto is *lore, identity, and ownership* — never power.
+**Genre:** Cozy shared-world farming/building MMO · **Setting:** A living world you advance through the ages — Stone Age to the year 3000
+**Design law #1:** The game must be fun with every token removed. The earn loop is *identity, ownership, and prestige* — never power.
+
+> Canonical pitch: _A cozy shared-world MMO where you claim land, work it, and build
+> it up through the ages — from a Stone-Age clearing to a year-3000 skyline. Your
+> land is yours to develop, flip, and show off as the whole world climbs the ages
+> together._
 
 ---
 
@@ -10,16 +15,16 @@
 | Pillar | Implementation consequence |
 |---|---|
 | **Cozy first** | No PvP combat in MVP. Death = pass out, lose nothing but time. Energy system is forgiving (no hard lockouts). |
-| **Fun without tokens** | All progression (tools, buildings, regions, cosmetics) earnable purely in-game. NFTs mirror in-game items, never gate them. |
-| **Server-authoritative** | All economy, inventory, crop, and quest state lives on the server. Client is a renderer + input device. Non-negotiable for a trading economy. |
-| **Lazy simulation** | Crops, machines, and timers are computed from timestamps on read, not ticked per-entity. This is what makes 100k farms cheap. |
-| **Social gravity** | Town square, world events, and the marketplace are shared spaces; farms are instanced but visitable. |
+| **Fun without tokens** | All progression (tools, buildings, ages, land, cosmetics) earnable purely in-game in soft currency. NFTs mirror in-game items, never gate them. |
+| **Server-authoritative** | All economy, inventory, crop, land, and quest state lives on the server. Client is a renderer + input device. Non-negotiable for a trading economy. |
+| **Lazy simulation** | Crops, machines, and timers are computed from timestamps on read, not ticked per-entity. This is what makes 100k plots cheap. |
+| **Social gravity** | Town square, world events, the land market, and the shared Age frontier are shared spaces; plots are instanced but visitable, and every plot shows up on the zoom-out canvas. |
 
 **Hard rules (enforced in code review, not just policy):**
-1. No item, crop, region, or stat is purchasable with fiat/crypto if it affects yield, speed, or access.
+1. No item, crop, age, land, or stat is purchasable with fiat/crypto if it affects yield, speed, or access.
 2. Wallet connection is optional. Email/guest accounts get 100% of gameplay.
-3. NFT mint = *export* of an item you already earned (cosmetics, land deed, relics). Burn-to-import brings it back. The chain is a bragging-rights mirror, not a source of truth for gameplay.
-4. No primary token. If a token ever exists, it touches cosmetics and governance only — out of MVP scope entirely.
+3. NFT mint = *export* of an item you already earned (cosmetics, land deed, showcase pieces). Burn-to-import brings it back. The chain is a bragging-rights mirror, not a source of truth for gameplay.
+4. No primary token. If a token ever exists, it touches cosmetics and governance only — out of MVP scope entirely, and gated behind legal review (see §7.4). The earn loop is funded by a cut of trading fees, never by token emissions.
 
 ---
 
@@ -73,8 +78,8 @@
 
 ### 1.2 Why this shape
 
-- **Two server roles, one codebase.** REST handles transactional, low-frequency ops (buy, craft, accept quest) where you want HTTP semantics, idempotency keys, and easy caching. WebSockets handle high-frequency ephemeral state (positions, emotes, chat). Both import the same `packages/sim` and `packages/db` workspaces.
-- **Zone processes.** Each map zone (Farm instances pool, Town, Forest, Mountain, Ruins, Marketplace) runs as a logical "room" inside a zone worker. Rooms are assignable to any game-server process via Redis-backed routing, so horizontal scaling = add processes.
+- **Two server roles, one codebase.** REST handles transactional, low-frequency ops (buy land, craft, accept quest) where you want HTTP semantics, idempotency keys, and easy caching. WebSockets handle high-frequency ephemeral state (positions, emotes, chat). Both import the same `packages/sim` and `packages/db` workspaces.
+- **Zone processes.** Each map zone (Plot instances pool, Town, Forest, Mountain, the Age Frontier, Marketplace) runs as a logical "room" inside a zone worker. Rooms are assignable to any game-server process via Redis-backed routing, so horizontal scaling = add processes.
 - **Chain is async-only.** No gameplay request ever awaits an RPC call to Solana. Mints/burns are queued jobs with status rows the client polls. A Solana outage degrades to "export temporarily unavailable" — the game keeps running.
 - **Lazy crop simulation.** A planted crop is a row: `(planted_at, crop_type, watered_until, fertilizer)`. Growth stage is a pure function of `now()` — computed when the tile is rendered or harvested. Zero background work per crop. Machines (kegs, smelters) work identically: `finishes_at` timestamp.
 
@@ -91,7 +96,7 @@
 | Queue | BullMQ (Redis) | Chain ops, mail delivery, event scheduling |
 | Solana | @solana/web3.js, @solana/wallet-adapter, Metaplex Umi + Bubblegum (cNFTs), Helius (RPC + webhooks) | Devnet for MVP |
 | Auth | SIWS (signed message) or email magic link → httpOnly session cookie + short-lived WS token | |
-| Infra (MVP) | Railway (api, game, worker) + Neon/Supabase Postgres + Upstash Redis + Cloudflare CDN | Matches your existing deployment habits |
+| Infra (MVP) | Railway (api, game, worker) + Neon/Supabase Postgres + Upstash Redis + Cloudflare CDN | Matches your existing deployment hashards |
 
 ### 1.4 Time & calendar system (server-global)
 
@@ -104,7 +109,7 @@
 
 ## 2. Database Schema (PostgreSQL 16)
 
-Full DDL. Conventions: `uuid` PKs (v7 for index locality), `created_at/updated_at` everywhere (omitted below for brevity except where load-bearing), soft quantities as `bigint`, money as `bigint` (smallest unit of soft currency "Bits" ⓑ).
+Full DDL. Conventions: `uuid` PKs (v7 for index locality), `created_at/updated_at` everywhere (omitted below for brevity except where load-bearing), soft quantities as `bigint`, money as `bigint` (smallest unit of soft currency "Shards" ◈).
 
 ```sql
 -- ============ IDENTITY ============
@@ -128,12 +133,12 @@ CREATE TABLE characters (                         -- 1 per account in MVP
   account_id      uuid NOT NULL UNIQUE REFERENCES accounts(id),
   name            text NOT NULL UNIQUE CHECK (length(name) BETWEEN 3 AND 16),
   appearance      jsonb NOT NULL,                 -- sprite layers: body, hair, outfit ids
-  bits            bigint NOT NULL DEFAULT 500 CHECK (bits >= 0),
+  shards            bigint NOT NULL DEFAULT 500 CHECK (shards >= 0),
   energy          int NOT NULL DEFAULT 100,
   energy_updated  timestamptz NOT NULL DEFAULT now(), -- energy regen computed lazily
   pos_zone        text NOT NULL DEFAULT 'farm',
   pos_x           int NOT NULL DEFAULT 25, pos_y int NOT NULL DEFAULT 25,
-  skills          jsonb NOT NULL DEFAULT '{"farming":0,"mining":0,"foraging":0,"crafting":0,"archaeology":0}',
+  skills          jsonb NOT NULL DEFAULT '{"farming":0,"mining":0,"foraging":0,"crafting":0,"prospecting":0}',
   tutorial_step   int NOT NULL DEFAULT 0,
   last_seen_at    timestamptz
 );
@@ -141,7 +146,7 @@ CREATE TABLE characters (                         -- 1 per account in MVP
 -- ============ ITEMS & INVENTORY ============
 CREATE TABLE item_defs (                          -- static catalog, seeded from JSON
   id              text PRIMARY KEY,               -- 'wood', 'iron_hoe', 'seed_bitberry'
-  category        text NOT NULL,                  -- resource|seed|crop|tool|machine|decoration|relic|consumable
+  category        text NOT NULL,                  -- resource|seed|crop|tool|machine|decoration|showpiece|consumable
   stack_max       int NOT NULL DEFAULT 999,
   base_value      bigint NOT NULL DEFAULT 0,      -- NPC vendor reference price
   tradeable       boolean NOT NULL DEFAULT true,
@@ -155,16 +160,17 @@ CREATE TABLE inventory_slots (
   slot            int  NOT NULL,
   item_id         text NOT NULL REFERENCES item_defs(id),
   qty             int  NOT NULL CHECK (qty > 0),
-  instance_meta   jsonb,                          -- durability, relic provenance, etc.
+  instance_meta   jsonb,                          -- durability, showpiece provenance, etc.
   PRIMARY KEY (character_id, container, slot)
 );
 CREATE INDEX inv_by_item ON inventory_slots(character_id, item_id);
 
 -- ============ LAND, TILES, STRUCTURES ============
-CREATE TABLE farms (
+CREATE TABLE farms (                              -- a player's claimed land parcel
   id              uuid PRIMARY KEY DEFAULT uuidv7(),
   owner_id        uuid NOT NULL UNIQUE REFERENCES characters(id),
-  name            text NOT NULL DEFAULT 'Abandoned Plot',
+  name            text NOT NULL DEFAULT 'Unclaimed Clearing',
+  age             int NOT NULL DEFAULT 1,         -- this plot's current age, 1 (Stone) .. 6 (Future)
   layout_rev      int NOT NULL DEFAULT 0,         -- bump to invalidate client cache
   deed_asset_id   text                            -- cNFT asset id if deed exported
 );
@@ -193,10 +199,10 @@ CREATE TABLE crops (
 CREATE TABLE structures (
   id              uuid PRIMARY KEY DEFAULT uuidv7(),
   farm_id         uuid NOT NULL REFERENCES farms(id),
-  def_id          text NOT NULL,                  -- house|barn|workshop|solar_generator|oracle_tower|deco_*
+  def_id          text NOT NULL,                  -- hut|cabin|house|tower|barn|workshop|solar_generator|survey_tower|deco_*
   x int NOT NULL, y int NOT NULL, rotation int NOT NULL DEFAULT 0,
   level           int NOT NULL DEFAULT 1,
-  state           jsonb NOT NULL DEFAULT '{}'     -- e.g. generator charge, tower scan cooldown
+  state           jsonb NOT NULL DEFAULT '{}'     -- e.g. generator charge, survey-tower cooldown
 );
 
 CREATE TABLE machine_jobs (                       -- lazy crafting/processing
@@ -212,7 +218,7 @@ CREATE INDEX jobs_ready ON machine_jobs(structure_id) WHERE NOT collected;
 -- ============ NPCs, DIALOGUE, QUESTS ============
 CREATE TABLE npc_relationships (
   character_id    uuid NOT NULL REFERENCES characters(id),
-  npc_id          text NOT NULL,                  -- 'builder_ben', 'oracle_olivia', ...
+  npc_id          text NOT NULL,                  -- 'builder_ben', 'surveyor_olivia', ...
   points          int NOT NULL DEFAULT 0,         -- 250 pts per heart, 10 hearts
   talked_today_on date,                           -- daily-talk point gating
   gifts_this_week int NOT NULL DEFAULT 0,
@@ -247,7 +253,7 @@ CREATE TABLE auctions (
   seller_id       uuid NOT NULL REFERENCES characters(id),
   item_id         text NOT NULL,
   qty             int NOT NULL,
-  instance_meta   jsonb,                          -- relics auction with provenance
+  instance_meta   jsonb,                          -- land deeds & showpieces auction with provenance
   min_bid         bigint NOT NULL,
   buyout          bigint,
   ends_at         timestamptz NOT NULL,
@@ -258,7 +264,7 @@ CREATE TABLE auction_bids (
   id              uuid PRIMARY KEY DEFAULT uuidv7(),
   auction_id      uuid NOT NULL REFERENCES auctions(id),
   bidder_id       uuid NOT NULL REFERENCES characters(id),
-  amount          bigint NOT NULL,                -- escrowed from bits on insert
+  amount          bigint NOT NULL,                -- escrowed from shards on insert
   outbid          boolean NOT NULL DEFAULT false
 );
 
@@ -273,7 +279,7 @@ CREATE TABLE trades (                             -- direct P2P trade window
 CREATE TABLE ledger (                             -- append-only economy audit trail
   id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   character_id    uuid NOT NULL,
-  delta_bits      bigint NOT NULL,
+  delta_shards      bigint NOT NULL,
   reason          text NOT NULL,                  -- 'market_sale', 'quest_reward', ...
   ref             uuid,
   at              timestamptz NOT NULL DEFAULT now()
@@ -288,17 +294,24 @@ CREATE TABLE friendships (
 
 CREATE TABLE world_events (
   id              uuid PRIMARY KEY DEFAULT uuidv7(),
-  type            text NOT NULL,                  -- meteor|oracle_malfunction|ai_awakening|market_festival
+  type            text NOT NULL,                  -- meteor|age_surge|land_rush|market_festival
   zone            text NOT NULL,
   starts_at timestamptz NOT NULL, ends_at timestamptz NOT NULL,
   payload         jsonb NOT NULL DEFAULT '{}'     -- spawn tables, coordinates
 );
 
-CREATE TABLE discoveries (                        -- archaeology / hidden areas
+CREATE TABLE discoveries (                        -- frontier finds / hidden areas
   character_id    uuid NOT NULL REFERENCES characters(id),
-  discovery_id    text NOT NULL,                  -- 'secret_cave', 'buried_server_room', 'validator_temple', relic ids
+  discovery_id    text NOT NULL,                  -- 'hidden_grotto', 'lost_quarry', 'frontier_landmark', showpiece ids
   found_at        timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (character_id, discovery_id)
+);
+
+CREATE TABLE world_age (                          -- single-row collective Age Meter (the shared frontier)
+  id              int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  age             int NOT NULL DEFAULT 1,         -- the world frontier age, 1 (Stone) .. 6 (Future)
+  progress        bigint NOT NULL DEFAULT 0,      -- contribution accumulated toward the next age
+  advanced_at     timestamptz NOT NULL DEFAULT now()
 );
 
 -- ============ CHAIN MIRROR ============
@@ -316,7 +329,7 @@ CREATE TABLE nft_exports (
 ```
 
 **Key invariants enforced in transactions, not triggers:**
-- Every bits mutation writes a `ledger` row in the same transaction (single helper `moveBits(tx, ...)`).
+- Every shards mutation writes a `ledger` row in the same transaction (single helper `moveShards(tx, ...)`).
 - Inventory mutations go through one `moveItems(tx, ops[])` helper that locks rows `FOR UPDATE` ordered by PK to prevent deadlocks and dupes.
 - Market fills: `UPDATE ... WHERE qty_remaining >= $n RETURNING` — optimistic, no read-then-write races.
 
@@ -326,12 +339,12 @@ CREATE TABLE nft_exports (
 
 ### 3.1 Topology
 
-- **Zones are rooms.** Static zones (Town, Forest, Mountain, Ruins, Marketplace) are singleton rooms in MVP, sharded by instance later. Farms are **on-demand rooms**: spun up when the owner or a visitor enters, hibernated (state flushed to PG) after 60s empty.
+- **Zones are rooms.** Static zones (Town, Forest, Mountain, the Age Frontier, Marketplace) are singleton rooms in MVP, sharded by instance later. Plots are **on-demand rooms**: spun up when the owner or a visitor enters, hibernated (state flushed to PG) after 60s empty.
 - **Gateway-less MVP:** the client connects directly to the game server with `?token=<short-lived WS JWT>` minted by the API. At scale, a thin gateway routes connections to the process owning the target room (room→process mapping in Redis).
 - **Tick model:**
   - **Input rate:** client sends movement intents at most 15/s (coalesced).
   - **Sim tick: 10 Hz** — validates movement against collision grid, advances event logic.
-  - **Broadcast: 10 Hz snapshots** of dirty entities only, msgpack-encoded, interest-filtered to a 32-tile radius (only matters in Town/events; farms have ≤8 players).
+  - **Broadcast: 10 Hz snapshots** of dirty entities only, msgpack-encoded, interest-filtered to a 32-tile radius (only matters in Town/events; plots have ≤8 players).
   - Client interpolates remote players 100ms in the past; local player uses prediction + reconciliation (positions are tile-grid, so corrections are cheap snaps).
 - **Movement validation is cheap-authoritative:** server checks speed cap and collision per intent; it does not re-simulate physics. Cozy game — anti-cheat budget goes to the economy, not movement.
 
@@ -341,7 +354,7 @@ CREATE TABLE nft_exports (
 // Client → Server
 type C2S =
   | { t: 'move';   seq: number; dir: 0|1|2|3|4; x: number; y: number } // 4=stop
-  | { t: 'act';    seq: number; action: 'hoe'|'water'|'plant'|'harvest'|'chop'|'mine'|'forage'|'dig'; x: number; y: number; itemId?: string }
+  | { t: 'act';    seq: number; action: 'hoe'|'water'|'plant'|'harvest'|'chop'|'mine'|'forage'|'survey'; x: number; y: number; itemId?: string }
   | { t: 'place';  defId: string; x: number; y: number; rot: number }
   | { t: 'chat';   channel: 'local'|'zone'|'whisper'; to?: string; msg: string }
   | { t: 'emote';  id: string }
@@ -358,10 +371,10 @@ type S2C =
   | { t: 'chat';   from: string; channel: string; msg: string }
   | { t: 'dlg';    npcId: string; node: DialogueNode }          // current dialogue node + choices
   | { t: 'event';  ev: WorldEventState }                        // meteor down at (x,y)!
-  | { t: 'toast';  kind: 'quest'|'levelup'|'discovery'|'relic'; data: unknown };
+  | { t: 'toast';  kind: 'quest'|'levelup'|'discovery'|'age_up'; data: unknown };
 ```
 
-Every state-mutating action returns an `ack` keyed by client `seq`; the client applies optimistic UI and rolls back on `ok:false`. **Inventory and bits are never mutated optimistically** — the HUD waits for the `inv` patch (sub-100ms feels instant; dupes feel like a crisis).
+Every state-mutating action returns an `ack` keyed by client `seq`; the client applies optimistic UI and rolls back on `ok:false`. **Inventory and shards are never mutated optimistically** — the HUD waits for the `inv` patch (sub-100ms feels instant; dupes feel like a crisis).
 
 ### 3.3 Action pipeline (server)
 
@@ -422,9 +435,9 @@ crypto-valley/
 │  ├─ sim/                       # PURE deterministic gameplay logic (no IO)
 │  │  ├─ crops.ts energy.ts crafting.ts skills.ts movement.ts
 │  │  └─ __tests__/              # the most-tested package in the repo
-│  ├─ db/                        # drizzle schema, migrations, query helpers (moveBits, moveItems)
-│  ├─ content/                   # GAME DATA AS CODE — items.json crops.json recipes.json
-│  │  ├─ npcs/ builder_ben.json oracle_olivia.json ... (dialogue trees + quests)
+│  ├─ db/                        # drizzle schema, migrations, query helpers (moveShards, moveItems)
+│  ├─ content/                   # GAME DATA AS CODE — items.json crops.json recipes.json ages.json
+│  │  ├─ npcs/ builder_ben.json surveyor_olivia.json ... (dialogue trees + quests)
 │  │  ├─ quests/ maps/ events/ seasons.json
 │  │  └─ validate.ts             # CI gate: every itemId referenced anywhere must exist
 │  └─ config/                    # eslint, tsconfig bases
@@ -440,7 +453,9 @@ The split that matters: **`packages/sim` is pure functions** (state in → state
 
 ### 5.1 The loop, tuned
 
-A full game day (20 min) of an engaged player: wake → water/harvest (3–4 min) → choose a venture (Forest forage run, Mountain mining, Ruins dig, or Town social/quests; 8–10 min) → craft/queue machines (2 min) → market check (2 min) → free play. Energy (100, regen 1/36s, sleep = full) softly budgets ~120 actions/day so sessions end on a "one more day" cliffhanger, not a wall.
+A full game day (20 min) of an engaged player: wake → water/harvest (3–4 min) → choose a venture (Forest forage run, Mountain mining, an Age-Frontier survey to scout claimable land, or Town social/quests; 8–10 min) → develop the plot / craft / queue machines (2 min) → land-market check (2 min) → free play. Energy (100, regen 1/36s, sleep = full) softly budgets ~120 actions/day so sessions end on a "one more day" cliffhanger, not a wall.
+
+The earn loop sits *over* this: gather and build to **advance your land through the ages** (hut → cabin → house → tower → high-rise → skyscraper), which raises the plot's value, then **flip** it on the land market and climb the season leaderboard. Every player personally starts in the Stone Age and climbs all six ages; a collective **Age Meter** advances a shared frontier that unlocks new land and tech for everyone.
 
 ### 5.2 Farming
 
@@ -466,29 +481,29 @@ export function cropStage(c: CropRow, now: number, season: Season): CropView {
 | **Bear Market** | Hodl Root (12d, survives into next season), Stable Beans (low value, never fails), Wintermint | snow, scarcity, foraging matters more |
 | All-season | Datagrass (craft input), Glowcap mushrooms (night only) | |
 
-Bear Market is deliberately the *social* season: crop income drops, so the design pushes players toward mining, ruins archaeology, NPC quests, and the marketplace — scarcity creates trade.
+Bear Market is deliberately the *social* season: crop income drops, so the design pushes players toward mining, frontier surveying, building up land to flip, NPC quests, and the marketplace — scarcity creates trade.
 
 ### 5.3 Resources & gathering
 
 | Resource | Source | Tool gate |
 |---|---|---|
-| Wood | Trees (Farm debris, Forest) | Axe T1–T3 |
-| Stone | Rocks (Farm, Mountain) | Pickaxe T1–T3 |
+| Wood | Trees (Plot debris, Forest) | Axe T1–T3 |
+| Stone | Rocks (Plot, Mountain) | Pickaxe T1–T3 |
 | Metal (Copper/Iron/Chromium) | Mountain ore nodes, depth-tiered | Pickaxe T2+ |
-| Data Fragments | Ruins dig sites, Glowcap composting, dead crops | Shovel / Scanner |
-| Energy Cells | Solar Generator output, meteor events, deep ruins | — |
+| Era Materials | Age-Frontier survey finds, Glowcap composting, dead crops | Surveyor's Kit |
+| Energy Cells | Solar Generator output, meteor events, deep frontier caches | — |
 
-Nodes respawn on zone-day boundaries from seeded RNG (same trick as weather) — no respawn timers to persist.
+"Era Materials" are the per-age building inputs (e.g. thatch in the Stone Age, fired brick later, alloys and bio-concrete in the future ages); higher ages need higher-era materials, which the world frontier unlocks as it climbs. Nodes respawn on zone-day boundaries from seeded RNG (same trick as weather) — no respawn timers to persist.
 
 ### 5.4 Crafting & machines
 
 - **Hand-craft** (instant, at Workshop bench): tools, fences, paths, decorations, storage chests.
-- **Machine jobs** (timed, lazy `finishes_at`): Smelter (ore→bars, 30m), Compiler (Data Fragments→Software components, 1h), Fermenter (crops→goods, 2–6h), Solar Generator (passive Energy Cells, cap 6/day), **Oracle Tower** (consumes Energy Cells to "scan": reveals one dig-site hint or tomorrow's market demand spike — *information*, the most crypto resource of all).
+- **Machine jobs** (timed, lazy `finishes_at`): Smelter (ore→bars, 30m), Assembler (Era Materials→building components, 1h), Fermenter (crops→goods, 2–6h), Solar Generator (passive Energy Cells, cap 6/day), **Survey Tower** (consumes Energy Cells to "scan": reveals one frontier claim-hint or tomorrow's land/market demand spike — *information*, the most valuable resource of all).
 - Recipes in `packages/content/recipes.json`: `{ id, station, inputs: [{item, qty}], output, ms, skillReq }`. ~40 recipes at MVP.
 
 ### 5.5 Skills (RuneScape DNA)
 
-Five skills — Farming, Mining, Foraging, Crafting, Archaeology — XP per action, levels 1–50 at MVP. Levels gate recipes and node tiers, give small speed/yield bumps (≤25% total), and unlock zone shortcuts (Mining 15 opens the Mountain tunnel to Ruins). Visible level-up toasts + zone-chat shoutouts at milestones (the RuneScape dopamine, cozy-fied).
+Five skills — Farming, Mining, Foraging, Crafting, Prospecting — XP per action, levels 1–50 at MVP. Levels gate recipes and node tiers, give small speed/yield bumps (≤25% total), and unlock zone shortcuts (Mining 15 opens the Mountain tunnel toward the Age Frontier). **Prospecting** is the land-scout skill: it raises survey yields, sharpens claim-hints, and unlocks the ability to appraise and stake higher-tier frontier parcels. Visible level-up toasts + zone-chat shoutouts at milestones (the RuneScape dopamine, cozy-fied).
 
 ### 5.6 NPC system — the cast of 10
 
@@ -496,16 +511,16 @@ Relationship: 2,500 points = 10 hearts. Points from daily talks (+20), gifts (lo
 
 | NPC | Role / Location | Personality hook | Signature quest line |
 |---|---|---|---|
-| **Builder Ben** | Carpenter, Town | Cheerful, overbuilds everything | Upgrades your house; finale: rebuild the Town bridge to Mountain |
-| **Oracle Olivia** | Oracle Tower keeper, Town edge | Speaks in probabilities, secretly lonely | Teaches Oracle Tower crafting; arc about the malfunctioning Great Oracle |
-| **Agent Alice** | Wandering ex-AI agent | Glitches mid-sentence, fragmented memory | Recover her 7 memory shards from the Ruins → she "reboots" (major story beat) |
-| **Rugged Ron** | Pawn shop, Marketplace | Paranoid, burned in the Collapse, heart of gold | Teaches scam-spotting (gameplay: appraise fake relics); redemption arc |
-| **Professor Hash** | Archaeologist, Ruins camp | Academic, hopeless at practical life | Archaeology skill mentor; relic codex; opens the Validator Temple |
+| **Builder Ben** | Carpenter, Town | Cheerful, overbuilds everything | Upgrades your home up the ages (hut→cabin→house→tower); finale: rebuild the Town bridge to Mountain |
+| **Surveyor Olivia** | Survey Tower keeper, Town edge | Speaks in probabilities, secretly lonely | Teaches Survey Tower crafting; arc about charting the next great Age Frontier |
+| **Agent Alice** | Wandering frontier scout | Restless, head full of half-finished maps | Map her 7 lost survey markers across the frontier → she finally settles a claim (major story beat) |
+| **Rugged Ron** | Land-broker & pawn shop, Marketplace | Paranoid, got burned on a bad flip once, heart of gold | Teaches deal-spotting (gameplay: appraise over/under-valued plots); redemption arc |
+| **Professor Hash** | Land surveyor & historian, Frontier camp | Academic, hopeless at practical life | Prospecting skill mentor; the ages chronicle; opens the Frontier Landmark |
 | **Mina Mint** | General store, Town | Brisk, numbers brain, festival organizer | Runs Market Festival; unlock auction house access early via her quests |
 | **Sol the Lightkeeper** | Solar farm, Mountain foothills | Serene, solar-punk monk | Energy Cell economy tutor; meteor event first responder |
-| **Deva the Validator** | Ancient sentinel NPC, Ruins | Formal, 10,000 years of logs, dry wit | Lore exposition; stamps "validated" on your relic discoveries |
-| **Pip** | Kid courier, everywhere | Fast, nosy, knows every shortcut | Delivery questline that teaches the map; reveals the Secret Cave |
-| **Granny Genesis** | Oldest resident, Town | Remembers "before the Collapse", baker | Cooking recipes; the questline that quietly explains the entire lore |
+| **Deva the Curator** | Showcase keeper, Frontier | Formal, dry wit, an eye for what lasts | Curates the land showcase; "features" your finest developed plots on the leaderboard |
+| **Pip** | Kid courier, everywhere | Fast, nosy, knows every shortcut | Delivery questline that teaches the map; reveals the Hidden Grotto |
+| **Granny Genesis** | Oldest resident, Town | Remembers when Town was a single Stone-Age hut, baker | Cooking recipes; the questline that quietly explains how the world climbs the ages |
 
 **Dialogue tree format** (`packages/content/npcs/*.json`):
 
@@ -514,14 +529,14 @@ Relationship: 2,500 points = 10 hearts. Points from daily talks (+20), gifts (lo
   "npc": "rugged_ron",
   "nodes": {
     "root": { "match": [
-      { "if": "quest:fake_relic.active", "goto": "fake_relic_check" },
+      { "if": "quest:overpriced_plot.active", "goto": "appraisal_check" },
       { "if": "hearts>=6", "goto": "warm_root" },
       { "goto": "cold_root" } ] },
     "cold_root": {
-      "say": ["Hmph. Touch nothing.", "You here to gawk or trade?"],
+      "say": ["Hmph. Touch nothing.", "You here to gawk or to deal?"],
       "choices": [
         { "label": "Just saying hi.", "fx": "+points:20/day", "goto": "end" },
-        { "label": "What happened to your arm?", "req": "hearts>=2", "goto": "collapse_story_1" },
+        { "label": "What happened with that bad flip?", "req": "hearts>=2", "goto": "bad_flip_story_1" },
         { "label": "[Gift]", "goto": "@gift" } ] }
   }
 }
@@ -538,44 +553,44 @@ Three tiers: **Story** (hand-authored, ~20 at MVP, gated by hearts/skills/season
 ```jsonc
 { "bear_market": {
     "cropTable": ["hodl_root","stable_beans","wintermint","datagrass"],
-    "spawnMods": { "ore": 1.3, "forage": 0.7, "data_fragments": 1.2 },
+    "spawnMods": { "ore": 1.3, "forage": 0.7, "era_materials": 1.2 },
     "weatherTable": { "snow": 0.4, "fog": 0.3, "clear": 0.3 },
-    "events": ["meteor:0.15/day", "ai_awakening:0.05/day"],
+    "events": ["meteor:0.15/day", "age_surge:0.05/day"],
     "cosmetics": { "townBanners": "bear", "music": "bear_suite", "palette": "cool_shift" } } }
 ```
 
 ### 5.9 Exploration & discoveries
 
-- **Secret Cave** (Forest): waterfall tile is walk-through-able; Pip hints at hearts 4. Glowcap farm + a lost wallet relic.
-- **Buried Server Room** (Mountain): revealed by mining the cracked wall (Mining 20) *or* by a meteor strike landing nearby (event-driven world change). Contains the Compiler recipe and Agent Alice shard #4.
-- **Ancient Validator Temple** (deep Ruins): opens only when a player presents 3 validated relics to Deva. Inside: the MVP's "endgame" — a puzzle floor that awards the **Genesis Block** decoration (mintable, purely cosmetic, the flex item).
-- **Dig sites**: 6 spawn per game-day across zones (seeded RNG); Shovel + Archaeology skill → relic table roll. Relics carry `instance_meta` provenance: `{ foundBy, foundAt, site }` — provenance makes auctions interesting.
+- **Hidden Grotto** (Forest): waterfall tile is walk-through-able; Pip hints at hearts 4. Glowcap farm + a hidden prime land deed.
+- **Lost Quarry** (Mountain): revealed by mining the cracked wall (Mining 20) *or* by a meteor strike landing nearby (event-driven world change). Contains the Assembler recipe and Agent Alice's lost marker #4.
+- **Frontier Landmark** (deep on the Age Frontier): opens only when a player presents 3 featured (showcased) deeds to Deva. Inside: the MVP's "endgame" — a puzzle floor that awards the **Genesis Plot** showpiece (mintable, purely cosmetic, the flex item — a tiny patch of land carried from the very first age).
+- **Survey sites**: 6 spawn per game-day across zones (seeded RNG); Surveyor's Kit + Prospecting skill → frontier-find table roll (claim-hints, era materials, the occasional stakeable parcel token). Land deeds and showpieces carry `instance_meta` provenance: `{ foundBy, foundAt, site }` — provenance makes auctions interesting.
 
 ### 5.10 World events (BullMQ scheduled, weighted by season)
 
 | Event | Duration | What happens |
 |---|---|---|
 | **Meteor crash** | 30 min | Impact site in Mountain/Forest; Energy Cells + Chromium ore; co-op mining (shared node HP) |
-| **Oracle malfunction** | 1 game-day | Olivia's tower spews scrambled hints; mini-quest to deliver Data Fragments; fixers get a rare scan |
-| **Lost AI awakening** | 45 min | A friendly rogue agent wanders a zone trading absurd offers (3 Pump-kins for a relic?); despawns forever-ish |
-| **Market Festival** | Real Saturday, 2h | Town Square stalls, 0% market fees, fishing contest, seasonal cosmetics vendor (bits only) |
+| **Age surge** | 1 game-day | The frontier crackles with progress; Olivia's tower spits extra claim-hints; mini-quest to deliver Era Materials toward the Age Meter; contributors get a rare survey |
+| **Land rush** | 45 min | A wave of fresh parcels opens along the frontier and a wandering broker offers wild trades (3 Pump-kins for a deed?); the parcels stop appearing once claimed |
+| **Market Festival** | Real Saturday, 2h | Town Square stalls, 0% market fees, fishing contest, seasonal cosmetics vendor (shards only) |
 
 ---
 
 ## 6. Map Design
 
-All zones authored in **Tiled**, 16×16px tiles, exported `.tmj` to CDN. Layers: `ground`, `ground_detail`, `collision`, `above` (y-sorted canopies), `objects` (spawn markers, doors, dig-site anchors), `lights` (point-light markers for night).
+All zones authored in **Tiled**, 16×16px tiles, exported `.tmj` to CDN. Layers: `ground`, `ground_detail`, `collision`, `above` (y-sorted canopies), `objects` (spawn markers, doors, survey-site anchors), `lights` (point-light markers for night).
 
 | Zone | Size (tiles) | Purpose | Notable |
 |---|---|---|---|
-| **Starter Farm** | 50×40 (instanced per player) | Home base; debris-clearing is the tutorial | River edge (future fishing), deed stone (NFT export point), house plot |
-| **Town Square** | 60×50 | Social hub; NPC homes, quest board, Mina's store, Ben's workshop | Plaza = event stage; clock tower shows season/day |
-| **Forest** | 70×60 | Foraging, wood, Glowcaps at night | Waterfall (Secret Cave), Pip's shortcut web |
-| **Mountain** | 70×70 | Mining, vertical switchbacks, Sol's solar farm | Cracked wall (Server Room), tunnel to Ruins (Mining 15) |
-| **Ancient Digital Ruins** | 80×60 | Archaeology, lore, late-MVP content | Corrupted-pixel aesthetic, Deva's gate, Validator Temple door |
-| **Marketplace** | 40×35 | Economy hub: order board, auction house, Ron's pawn shop | Ticker board shows live item prices (real data from PG) |
+| **Starter Plot** | 50×40 (instanced per player) | Home base; debris-clearing is the tutorial; always starts at Age 1 (Stone) | River edge (future fishing), deed stone (claim/NFT export point), home plot |
+| **Town Square** | 60×50 | Social hub; NPC homes, quest board, Mina's store, Ben's workshop | Plaza = event stage; clock tower shows season/day and the world Age Meter |
+| **Forest** | 70×60 | Foraging, wood, Glowcaps at night | Waterfall (Hidden Grotto), Pip's shortcut web |
+| **Mountain** | 70×70 | Mining, vertical switchbacks, Sol's solar farm | Cracked wall (Lost Quarry), tunnel to the Age Frontier (Mining 15) |
+| **Age Frontier** | 80×60 | Surveying & claiming new land, the world's leading edge, late-MVP content | The advancing-frontier aesthetic (tiles ahead of you sit at the world's current age), Deva's showcase gate, Frontier Landmark door |
+| **Marketplace** | 40×35 | Economy hub: land market, order board, auction house, Ron's land-broker shop | Ticker board shows live land & item prices (real data from PG) |
 
-Connection graph: Farm ↔ Town ↔ {Forest, Marketplace}; Forest ↔ Mountain; Mountain ↔ Ruins (gated); Town ↔ Ruins (long path, opens after Ben's bridge quest).
+Connection graph: Plot ↔ Town ↔ {Forest, Marketplace}; Forest ↔ Mountain; Mountain ↔ Age Frontier (gated); Town ↔ Age Frontier (long path, opens after Ben's bridge quest).
 
 ---
 
@@ -592,14 +607,14 @@ Connection graph: Farm ↔ Town ↔ {Forest, Marketplace}; Forest ↔ Mountain; 
 4. Linking flow lets an email account attach a wallet later (and vice versa).
 
 ### 7.3 Optional NFT ownership — the export/import model
-- **What's mintable:** Land Deed (farm name + layout snapshot image), Relics (with provenance metadata), earned cosmetics. `item_defs.mintable` whitelist; **never tools, seeds, resources, or anything with stats.**
+- **What's mintable:** Land Deed (plot name + age + layout snapshot image), Showpieces (with provenance metadata, e.g. the Genesis Plot), earned cosmetics. `item_defs.mintable` whitelist; **never tools, seeds, resources, or anything with stats.**
 - **Export:** player uses the Deed Stone / Ron's shop → item moves `inventory → nft_exports(queued)` in one tx (escrowed, unusable in-game) → chain-worker mints a **compressed NFT** (Metaplex Bubblegum — ~0.0001 SOL each, server-paid, rate-limited 5/week/account) to the player's wallet → status `confirmed`.
 - **Import:** player burns the cNFT (worker verifies via Helius webhook + on-demand check) → item re-enters inventory with provenance intact.
 - **Failure handling:** every job idempotent via `nft_exports.id` as client-side dedupe key; `failed` status refunds the escrowed item.
-- **Trading NFTs happens off-platform** (Tensor etc.) — we deliberately don't build NFT trading; the in-game auction house trades the *in-game* items, keeping the economy server-authoritative.
+- **Trading NFTs happens off-platform** (Tensor etc.) — we deliberately don't build NFT trading; the in-game land market and auction house trade the *in-game* deeds and items, keeping the economy server-authoritative.
 
 ### 7.4 What we explicitly do NOT do at MVP
-No token, no on-chain marketplace, no staking, no play-to-earn emissions, no NFT-gated land. (Notably: this also keeps the legal surface near zero — same posture as keeping earn/burn mechanics out of public copy on your other projects.)
+No token, no on-chain marketplace, no staking, no token emissions, no NFT-gated land. The earn loop (land flipping, leaderboards, seasonal prize pools) is funded by a **cut of in-game trading fees**, never by emissions, and runs entirely in soft currency until any earn surface clears legal review. (This keeps the legal surface near zero — same posture as keeping the cashtag and "earn" out of the same sentence in public copy, and earn/burn mechanics gated behind counsel on your other projects.)
 
 ---
 
@@ -608,7 +623,7 @@ No token, no on-chain marketplace, no staking, no play-to-earn emissions, no NFT
 ### 8.1 In-world HUD
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ ☀ Bull Market · Day 12 · 14:20   ⛅            ⓑ 12,480      │
+│ ☀ Bull Market · Day 12 · 14:20   ⛅            ◈ 12,480      │
 │ ┌────────┐                                      ┌──────────┐ │
 │ │ MiniMap│                                      │ Quests ▸ │ │
 │ └────────┘                                      │ ◦ Ben: 8/│ │
@@ -624,7 +639,7 @@ No token, no on-chain marketplace, no staking, no play-to-earn emissions, no NFT
 
 ### 8.2 Inventory + crafting (tabbed panel, ESC/I)
 ```
-┌─ Backpack ─ Craft ─ Skills ─ Relics ────────────── ✕ ─┐
+┌─ Backpack ─ Craft ─ Skills ─ Deeds ─────────────── ✕ ─┐
 │ ┌──┐┌──┐┌──┐┌──┐┌──┐┌──┐   Iron Axe            │
 │ │64││12││ 3││  ││  ││  │…  ┌────────────────┐   │
 │ └──┘└──┘└──┘└──┘└──┘└──┘   │ 5× Iron Bar  ✔ │   │
@@ -641,7 +656,7 @@ No token, no on-chain marketplace, no staking, no play-to-earn emissions, no NFT
 │ │portrait│  "Hmph. Touch nothing."           │
 │ └────────┘                                   │
 │  ▸ Just saying hi.                           │
-│  ▸ What happened to your arm?     [2♥ req]   │
+│  ▸ What happened with that bad flip? [2♥ req]│
 │  ▸ Give a gift…                              │
 └──────────────────────────────────────────────┘
 ```
@@ -651,7 +666,7 @@ No token, no on-chain marketplace, no staking, no play-to-earn emissions, no NFT
 ┌─ MARKET ── Buy ─ Sell ─ My Orders ─ Auctions ───────── ✕ ─┐
 │ 🔎 pump-kin            Price chart ▁▂▄▆█▆  (7-day)        │
 │ ┌────────────────────────────────────────────┐            │
-│ │ SELL ORDERS          qty      ⓑ each        │            │
+│ │ SELL ORDERS          qty      ◈ each        │            │
 │ │ pump-kin             ×38      142   [BUY]   │            │
 │ │ pump-kin             ×12      145   [BUY]   │            │
 │ └────────────────────────────────────────────┘            │
@@ -668,14 +683,14 @@ No token, no on-chain marketplace, no staking, no play-to-earn emissions, no NFT
 | Milestone | Weeks | Scope | Exit criteria |
 |---|---|---|---|
 | **M0 · Skeleton** | 1 | Monorepo, CI, Drizzle migrations, Next+Phaser shell, Tiled pipeline, deploy to Railway | Walk around an empty Town with 2 browsers seeing each other |
-| **M1 · Farm Core** | 2–3 | Farm instancing, tools, tilling/water/plant/harvest, energy, day/night, inventory, lazy crop sim | Full single-player farm day loop is *fun* |
-| **M2 · World** | 4–5 | Forest + Mountain, gathering nodes, skills/XP, crafting bench, 3 machines, storage | Gather→craft→upgrade tool progression works |
+| **M1 · Plot Core** | 2–3 | Plot instancing, tools, tilling/water/plant/harvest, energy, day/night, inventory, lazy crop sim | Full single-player plot day loop is *fun* |
+| **M2 · World & Building** | 4–5 | Forest + Mountain, gathering nodes, skills/XP, crafting bench, 3 machines, storage, free-form structure placement (hut→cabin→house) | Gather→build→upgrade progression works |
 | **M3 · NPCs & Quests** | 6–7 | Dialogue engine, 10 NPCs, relationships/gifts, quest engine, 12 story quests, daily board | New player has 3 days of guided content |
-| **M4 · Economy** | 8–9 | Marketplace order board, auctions, P2P trade window, ledger/audit, price ticker, Marketplace zone | Two players complete the full trade triangle; zero dupes under fuzz test |
-| **M5 · Seasons, Ruins & Events** | 10–11 | 4-season system, Ruins zone, archaeology, relics, discoveries, 4 world events, Validator Temple | A season rollover visibly changes the world; meteor event draws a crowd |
-| **M6 · Solana + Polish** | 12 | SIWS, devnet cNFT export/import, onboarding/tutorial via Pip, audio, juice pass, closed alpha (50 players) | Wallet-less player reports zero friction; export/import round-trips a relic |
+| **M4 · Economy** | 8–9 | Marketplace order board, auctions, land market, P2P trade window, ledger/audit, price ticker, Marketplace zone | Two players complete the full trade triangle and a land flip; zero dupes under fuzz test |
+| **M5 · Seasons, Ages & Events** | 10–11 | 4-season system, Age Frontier zone, per-plot age advancement + collective Age Meter, surveying, discoveries, 4 world events, Frontier Landmark | A season rollover and an age advance visibly change the world; meteor event draws a crowd |
+| **M6 · Solana + Polish** | 12 | SIWS, devnet cNFT export/import, onboarding/tutorial via Pip, audio, juice pass, closed alpha (50 players) | Wallet-less player reports zero friction; export/import round-trips a land deed |
 
-**Cut-line discipline:** if behind, cut (in order): auctions (keep order board), Validator Temple, 2 world events, NFT import (keep export). Never cut: farm feel, NPC dialogue, the market board.
+**Cut-line discipline:** if behind, cut (in order): auctions (keep order board), Frontier Landmark, 2 world events, NFT import (keep export). Never cut: plot feel, NPC dialogue, the market board.
 
 **Definition of fun checkpoints:** end of M1 and M3, run a 5-tester playtest; if Day-2 return intent < 60%, stop and tune before adding systems.
 
@@ -688,7 +703,7 @@ No token, no on-chain marketplace, no staking, no play-to-earn emissions, no NFT
 | **Alpha** | ≤200 | Single game-server process, singleton zones, Neon PG, Upstash Redis. Done — this is the MVP architecture as-is. |
 | **Beta** | 2k | Split zone rooms across N game-server processes (Redis room registry + thin WS gateway). PG read replica for market/leaderboards. Town shards into instances of 80 with friend-priority placement. |
 | **Launch** | 10k+ | Regional game-server clusters; msgpack→flatbuffers for snapshots; `crops`/`inventory_slots` partitioned by hash(character_id); ledger → monthly partitions; market matching moves to a single-writer Redis-backed matcher with PG WAL persistence; asset CDN with versioned atlases. |
-| **Ongoing** | — | Observability from day 1: pino → Loki, OpenTelemetry traces on the action pipeline, Grafana econ dashboards (bits faucets vs sinks daily — the #1 live-ops chart for a trading game). Economy anomaly alerts (any account ±50k bits/day). |
+| **Ongoing** | — | Observability from day 1: pino → Loki, OpenTelemetry traces on the action pipeline, Grafana econ dashboards (shards faucets vs sinks daily — the #1 live-ops chart for a trading game). Economy anomaly alerts (any account ±50k shards/day). |
 
 **Live-ops levers built into content-as-code:** seasons.json, event weights, crop values, and recipes are data — rebalancing is a content deploy, not a code release.
 
@@ -699,15 +714,15 @@ No token, no on-chain marketplace, no staking, no play-to-earn emissions, no NFT
 | Constant | Value | Rationale |
 |---|---|---|
 | Energy max / regen | 100 / 1 per 36s (full in 1 game-hour of sleep) | ~120 actions per game day |
-| Action costs | hoe 2 · water 1 · chop 3 · mine 3 · dig 4 | venture runs ≈ 25 actions |
-| Starting bits | 500 | one round of seeds + a gift |
-| Market fee | 2% (0% during festivals) | primary bits sink |
-| Bits faucets | crops 60% · quests 25% · gathering sales 15% | monitored on the econ dashboard |
+| Action costs | hoe 2 · water 1 · chop 3 · mine 3 · survey 4 | venture runs ≈ 25 actions |
+| Starting shards | 500 | one round of seeds + a gift |
+| Market fee | 2% (0% during festivals) | primary shards sink |
+| Shards faucets | crops 60% · quests 25% · gathering sales 15% | monitored on the econ dashboard |
 | Heart points/heart | 250 | 10 hearts ≈ 3 weeks of dailies or focused gifting |
 
 ## Appendix B — Risks
 
 1. **Economy dupes** — mitigated by single-helper mutations, ledger, fuzz tests in M4. Highest-severity risk; treat like a smart-contract audit.
-2. **Crypto theming alienating cozy players** — the theme is *archaeological* (post-collapse), not promotional. Playtest with non-crypto users at M3.
+2. **Crypto theming alienating cozy players** — the theme is *advancing through the ages* (build a Stone-Age clearing into a future city), warm and aspirational, not promotional. The land-flip earn loop reads as cozy ambition, not a casino. Playtest with non-crypto users at M3.
 3. **Scope** — the cut-line list exists for a reason; M1 fun-check is the kill-switch for feature creep.
-4. **NFT legal surface** — cosmetics-only, no token, no promises of value. Same legal-review gate before any mainnet or marketing copy mentioning ownership.
+4. **NFT / earn legal surface** — cosmetics-only mints, no token, no promises of value, earn loop funded by trading-fee cuts (never emissions). Same legal-review gate before any mainnet or marketing copy mentioning ownership or earning — and the cashtag and "earn" never share a sentence in public copy pre-counsel.
