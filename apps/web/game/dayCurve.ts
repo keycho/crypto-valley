@@ -11,19 +11,20 @@ export interface AmbientKey {
   color: number;
 }
 
-// dawn #FFD9A0 -> noon #FFF7EA (near-neutral) -> dusk #FF9E6B -> night #2B2640.
-// Depth pass: the dark keys sit slightly below the bible anchors so lit vs
-// shadowed forms separate more sharply; hues unchanged.
+// Warm Ages curve (art-bible §4): dawn #FFD9A0 -> noon #FBF1DA (warm near-neutral)
+// -> golden hour #FFDCA0 -> dusk #FF9E6B (hero) -> warm violet -> night. Daylight
+// leans golden; dusk is rich. Depth pass: the dark keys sit slightly below the
+// bible night anchor so lit vs shadowed forms separate sharply and lamps pop.
 export const AMBIENT_CURVE: AmbientKey[] = [
-  { minute: 0, color: 0x242038 }, // deep night (contrast-stretched #2B2640)
-  { minute: 270, color: 0x242038 }, // 04:30 still night
+  { minute: 0, color: 0x242038 }, // deep night (contrast-stretched #2B2A40)
+  { minute: 285, color: 0x242038 }, // 04:45 still night
   { minute: 360, color: 0xffd9a0 }, // 06:00 dawn
-  { minute: 480, color: 0xffeccb }, // 08:00 morning
-  { minute: 720, color: 0xfff7ea }, // 12:00 noon
-  { minute: 1020, color: 0xffe2b4 }, // 17:00 golden
+  { minute: 450, color: 0xffe7c0 }, // 07:30 warm morning
+  { minute: 720, color: 0xfbf1da }, // 12:00 noon (warm near-neutral, §4)
+  { minute: 990, color: 0xffdca0 }, // 16:30 golden hour (rich warm gold)
   { minute: 1110, color: 0xff9e6b }, // 18:30 dusk (hero window)
-  { minute: 1200, color: 0x6e4a5e }, // 20:00 dusk -> violet (deepened)
-  { minute: 1290, color: 0x242038 }, // 21:30 night
+  { minute: 1185, color: 0x7c4258 }, // 19:45 deep dusk -> rich warm violet
+  { minute: 1275, color: 0x282340 }, // 21:15 night settling
   { minute: 1440, color: 0x242038 }, // wrap
 ];
 
@@ -40,10 +41,12 @@ export interface LightDef {
   warm: boolean;
 }
 
+// Warm point lights (art-bible §4.3): amber #FFB769, radius 3-5 tiles, gentle
+// flicker. Cozy pools that read clearly by the dusk hero window.
 export const LIGHT_REGISTRY: Record<LightKind, LightDef> = {
-  window: { color: 0xffb769, radius: 60, intensity: 1.4, warm: true },
-  lamp: { color: 0xffd9a0, radius: 72, intensity: 1.7, warm: true },
-  terminal: { color: 0x34d399, radius: 64, intensity: 1.3, warm: false },
+  window: { color: 0xffb769, radius: 64, intensity: 1.5, warm: true },
+  lamp: { color: 0xffb769, radius: 76, intensity: 1.7, warm: true },
+  terminal: { color: 0x34d399, radius: 64, intensity: 1.2, warm: false },
 };
 
 const lerpChannel = (a: number, b: number, t: number): number => Math.round(a + (b - a) * t);
@@ -68,10 +71,14 @@ export function ambientColorAt(minute: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
-/** 0 at full day, 1 at deep night — drives how strongly warm lights glow. */
+/**
+ * 0 at full day, 1 at deep night — drives how strongly warm lights glow. Tracks
+ * the ambient BLUE channel rather than luma: warm dusk keeps a high red, so a
+ * luma measure barely registers it, but blue drops steadily from day into night.
+ * This lets lamp pools come up cozily by the dusk hero window (#FF9E6B, blue 107
+ * -> ~0.73) while staying dark in daylight (#FBF1DA, blue 218 -> ~0.10).
+ */
 export function nightnessAt(minute: number): number {
-  const c = ambientColorAt(minute);
-  const luma = (((c >> 16) & 0xff) + ((c >> 8) & 0xff) + (c & 0xff)) / 3;
-  // ~ #2B2640 luma 48 -> 1 ; >= ~200 -> 0
-  return Math.max(0, Math.min(1, (200 - luma) / 150));
+  const blue = ambientColorAt(minute) & 0xff;
+  return Math.max(0, Math.min(1, (235 - blue) / 175));
 }
