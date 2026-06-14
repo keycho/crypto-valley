@@ -3,8 +3,12 @@ import {
   claimPlot,
   inventorySlots,
   moveItems,
+  placeStructure,
   plots,
-  upgradePlot,
+  removeStructure,
+  structures,
+  type Tx,
+  upgradeStructure,
   worldNodes,
 } from "@crypto-valley/db";
 import {
@@ -13,12 +17,14 @@ import {
   GATHER_NODE_BY_ID,
   GATHER_NODES,
   GATHER_RESPAWN_GAME_MS,
+  nextStructure,
   nodeAvailable,
   PLOT_H,
-  PLOT_TIERS,
   PLOT_W,
   PLOTS,
   plotAt,
+  STRUCTURE_BY_ID,
+  structureRefund,
 } from "@crypto-valley/content";
 import type { WorldAction, WorldState } from "@crypto-valley/shared";
 import { ENERGY_MAX, regenEnergy } from "@crypto-valley/sim";
@@ -68,7 +74,6 @@ export async function getWorldState(characterId: string, now: number): Promise<W
   const plotRows = await database
     .select({
       index: plots.plotIndex,
-      tier: plots.tier,
       ownerId: plots.ownerId,
       ownerName: characters.name,
       x: plots.x,
@@ -78,6 +83,22 @@ export async function getWorldState(characterId: string, now: number): Promise<W
     })
     .from(plots)
     .leftJoin(characters, eq(plots.ownerId, characters.id));
+
+  // Only PLOT structures (farm machines have null plot_id and are excluded).
+  const structureRows = await database
+    .select({
+      id: structures.id,
+      plotIndex: plots.plotIndex,
+      defId: structures.defId,
+      x: structures.x,
+      y: structures.y,
+      w: structures.w,
+      h: structures.h,
+      rotation: structures.rotation,
+      tier: structures.level,
+    })
+    .from(structures)
+    .innerJoin(plots, eq(structures.plotId, plots.id));
 
   const nodeRows = await database.select().from(worldNodes);
   const harvestedAt = new Map(nodeRows.map((r) => [r.nodeId, r.harvestedAt.getTime()]));
@@ -90,7 +111,6 @@ export async function getWorldState(characterId: string, now: number): Promise<W
       .sort((a, b) => a.index - b.index)
       .map((p) => ({
         index: p.index,
-        tier: p.tier,
         ownerId: p.ownerId,
         ownerName: p.ownerName ? displayName(p.ownerName) : null,
         x: p.x,
@@ -98,6 +118,7 @@ export async function getWorldState(characterId: string, now: number): Promise<W
         w: p.w,
         h: p.h,
       })),
+    structures: structureRows,
     nodes: GATHER_NODES.map((n) => ({
       id: n.id,
       kind: n.kind,
@@ -118,7 +139,8 @@ export async function getWorldState(characterId: string, now: number): Promise<W
 
 // ----------------------------------------------------------------- act
 export async function worldAct(input: WorldAction, now: number): Promise<{ toast?: string }> {
-  const { characterId, action, plotIndex, nodeId, posX, posY } = input;
+  const characterId = input.characterId;
+  await ensurePlots(); // don't depend on a prior /world/state call
 
   const toast = await db().transaction(async (tx): Promise<string | undefined> => {
     const [char] = await tx
@@ -128,60 +150,115 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
       .for("update");
     if (!char) throw new WorldError("CHARACTER_NOT_FOUND");
 
-    if (action === "claim" || action === "upgrade") {
-      if (plotIndex === undefined) throw new WorldError("BAD_REQUEST");
-      const def = PLOTS.find((p) => p.index === plotIndex);
-      if (!def) throw new WorldError("PLOT_NOT_FOUND");
-      // Must be standing on the plot to build there.
-      if (plotAt(posX, posY)?.index !== plotIndex) throw new WorldError("OUT_OF_RANGE");
-
-      if (action === "claim") {
-        await claimPlot(tx, characterId, plotIndex, CLAIM_COST_SHARDS, new Date(now));
+    switch (input.action) {
+      case "claim": {
+        const def = PLOTS.find((p) => p.index === input.plotIndex);
+        if (!def) throw new WorldError("PLOT_NOT_FOUND");
+        if (plotAt(input.posX, input.posY)?.index !== input.plotIndex) {
+          throw new WorldError("OUT_OF_RANGE");
+        }
+        await claimPlot(tx, characterId, input.plotIndex, CLAIM_COST_SHARDS, new Date(now));
         return `Claimed plot · −${CLAIM_COST_SHARDS} Shards`;
       }
-      const row = await upgradePlot(tx, characterId, plotIndex, PLOT_TIERS);
-      return `Built ${PLOT_TIERS[row.tier].name}`;
+
+      case "chop":
+      case "mine":
+        return gather(tx, char, input, now);
+
+      case "place": {
+        const def = STRUCTURE_BY_ID[input.defId];
+        if (!def || !def.placeable) throw new WorldError("BAD_STRUCTURE");
+        await placeStructure(tx, characterId, {
+          defId: def.id,
+          x: input.x,
+          y: input.y,
+          w: def.footprint.w,
+          h: def.footprint.h,
+          rotation: input.rotation,
+          tier: def.tier,
+          cost: def.cost,
+        });
+        return `Placed ${def.name}`;
+      }
+
+      case "upgrade": {
+        const [s] = await tx
+          .select({ defId: structures.defId })
+          .from(structures)
+          .where(eq(structures.id, input.structureId));
+        if (!s) throw new WorldError("STRUCTURE_NOT_FOUND");
+        const next = nextStructure(s.defId);
+        if (!next) throw new WorldError("STRUCTURE_MAX_TIER");
+        await upgradeStructure(tx, characterId, input.structureId, {
+          fromDefId: s.defId,
+          toDefId: next.id,
+          toTier: next.tier,
+          cost: next.cost,
+        });
+        return `Upgraded to ${next.name}`;
+      }
+
+      case "remove": {
+        const [s] = await tx
+          .select({ defId: structures.defId })
+          .from(structures)
+          .where(eq(structures.id, input.structureId));
+        if (!s) throw new WorldError("STRUCTURE_NOT_FOUND");
+        const def = STRUCTURE_BY_ID[s.defId];
+        if (!def) throw new WorldError("BAD_STRUCTURE");
+        await removeStructure(tx, characterId, input.structureId, {
+          expectedDefId: s.defId,
+          refund: structureRefund(def),
+        });
+        return `Removed ${def.name} (refund)`;
+      }
     }
-
-    // chop | mine
-    const wantKind = action === "chop" ? "tree" : "rock";
-    if (!nodeId) throw new WorldError("BAD_REQUEST");
-    const node = GATHER_NODE_BY_ID[nodeId];
-    if (!node || node.kind !== wantKind) throw new WorldError("BAD_NODE");
-    if (Math.abs(node.x - posX) > 1 || Math.abs(node.y - posY) > 1) {
-      throw new WorldError("OUT_OF_RANGE");
-    }
-
-    const cfg = GATHER[node.kind];
-    const energy = regenEnergy(char.energy, char.energyUpdated.getTime(), now);
-    if (energy < cfg.energy) throw new WorldError("INSUFFICIENT_ENERGY");
-
-    const [existing] = await tx
-      .select()
-      .from(worldNodes)
-      .where(eq(worldNodes.nodeId, nodeId))
-      .for("update");
-    const lastAt = existing ? existing.harvestedAt.getTime() : null;
-    if (!nodeAvailable(lastAt, now, NODE_RESPAWN_MS)) throw new WorldError("NODE_DEPLETED");
-
-    await moveItems(tx, [{ characterId, itemId: cfg.item, qty: cfg.qty }]);
-    await tx
-      .insert(worldNodes)
-      .values({ nodeId, harvestedAt: new Date(now) })
-      .onConflictDoUpdate({ target: worldNodes.nodeId, set: { harvestedAt: new Date(now) } });
-
-    const skills = (char.skills as Record<string, number>) ?? {};
-    await tx
-      .update(characters)
-      .set({
-        energy: energy - cfg.energy,
-        energyUpdated: new Date(now),
-        skills: { ...skills, [cfg.skill]: (skills[cfg.skill] ?? 0) + 1 },
-      })
-      .where(eq(characters.id, characterId));
-
-    return node.kind === "tree" ? `+${cfg.qty} Wood` : `+${cfg.qty} Stone`;
   });
 
   return { toast };
+}
+
+/** Shared chop/mine handler — adjacency + energy + respawn, server-validated. */
+async function gather(
+  tx: Tx,
+  char: typeof characters.$inferSelect,
+  input: Extract<WorldAction, { action: "chop" | "mine" }>,
+  now: number,
+): Promise<string> {
+  const wantKind = input.action === "chop" ? "tree" : "rock";
+  const node = GATHER_NODE_BY_ID[input.nodeId];
+  if (!node || node.kind !== wantKind) throw new WorldError("BAD_NODE");
+  if (Math.abs(node.x - input.posX) > 1 || Math.abs(node.y - input.posY) > 1) {
+    throw new WorldError("OUT_OF_RANGE");
+  }
+
+  const cfg = GATHER[node.kind];
+  const energy = regenEnergy(char.energy, char.energyUpdated.getTime(), now);
+  if (energy < cfg.energy) throw new WorldError("INSUFFICIENT_ENERGY");
+
+  const [existing] = await tx
+    .select()
+    .from(worldNodes)
+    .where(eq(worldNodes.nodeId, input.nodeId))
+    .for("update");
+  const lastAt = existing ? existing.harvestedAt.getTime() : null;
+  if (!nodeAvailable(lastAt, now, NODE_RESPAWN_MS)) throw new WorldError("NODE_DEPLETED");
+
+  await moveItems(tx, [{ characterId: char.id, itemId: cfg.item, qty: cfg.qty }]);
+  await tx
+    .insert(worldNodes)
+    .values({ nodeId: input.nodeId, harvestedAt: new Date(now) })
+    .onConflictDoUpdate({ target: worldNodes.nodeId, set: { harvestedAt: new Date(now) } });
+
+  const skills = (char.skills as Record<string, number>) ?? {};
+  await tx
+    .update(characters)
+    .set({
+      energy: energy - cfg.energy,
+      energyUpdated: new Date(now),
+      skills: { ...skills, [cfg.skill]: (skills[cfg.skill] ?? 0) + 1 },
+    })
+    .where(eq(characters.id, char.id));
+
+  return node.kind === "tree" ? `+${cfg.qty} Wood` : `+${cfg.qty} Stone`;
 }

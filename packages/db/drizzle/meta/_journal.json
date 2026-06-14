@@ -15,6 +15,13 @@
       "when": 1781396612709,
       "tag": "0001_sticky_lake",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781404538153,
+      "tag": "0002_gray_micromacro",
+      "breakpoints": true
     }
   ]
 }

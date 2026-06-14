@@ -138,18 +138,30 @@ export const crops = pgTable(
   (t) => [unique("crops_farm_xy").on(t.farmId, t.x, t.y)],
 );
 
-export const structures = pgTable("structures", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  farmId: uuid("farm_id")
-    .notNull()
-    .references(() => farms.id),
-  defId: text("def_id").notNull(),
-  x: integer("x").notNull(),
-  y: integer("y").notNull(),
-  rotation: integer("rotation").notNull().default(0),
-  level: integer("level").notNull().default(1),
-  state: jsonb("state").notNull().default({}),
-});
+export const structures = pgTable(
+  "structures",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // A structure belongs to EITHER a private farm (machines) OR a town plot
+    // (P7 free-form building) — exactly one, enforced by structures_owner_xor.
+    farmId: uuid("farm_id").references(() => farms.id),
+    plotId: uuid("plot_id").references(() => plots.id),
+    defId: text("def_id").notNull(),
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+    // Footprint in tiles, denormalized from the content def so bounds/overlap
+    // checks are pure DB (a structure's footprint never changes on upgrade).
+    w: integer("w").notNull().default(1),
+    h: integer("h").notNull().default(1),
+    rotation: integer("rotation").notNull().default(0),
+    level: integer("level").notNull().default(1), // structure TIER (hut=1 .. skyscraper=6)
+    state: jsonb("state").notNull().default({}),
+  },
+  (t) => [
+    check("structures_owner_xor", sql`(${t.farmId} is null) <> (${t.plotId} is null)`),
+    index("structures_by_plot").on(t.plotId),
+  ],
+);
 
 export const machineJobs = pgTable(
   "machine_jobs",
@@ -170,18 +182,18 @@ export const machineJobs = pgTable(
 
 /**
  * The shared island's claimable building plots (P6). Rows mirror the fixed
- * `PLOTS` grid in packages/content (seeded idempotently). Ownership + tier are
- * mutated ONLY server-side, in a transaction, via the `claimPlot`/`upgradePlot`
- * helpers (which ledger the Shards spend). `owner_id` null = unclaimed.
+ * `PLOTS` grid in packages/content (seeded idempotently). Ownership is mutated
+ * ONLY server-side, in a transaction, via the `claimPlot` helper (which ledgers
+ * the Shards spend). `owner_id` null = unclaimed. A plot is a CANVAS — what's
+ * built on it lives in `structures` (P7), not a per-plot tier.
  */
 export const plots = pgTable(
   "plots",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    /** Stable content index — the key clients claim/upgrade against. */
+    /** Stable content index — the key clients claim against. */
     plotIndex: integer("plot_index").notNull().unique(),
     ownerId: uuid("owner_id").references(() => characters.id), // null = unclaimed
-    tier: integer("tier").notNull().default(0), // 0 empty .. 5 mansion
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
     // Footprint (tiles), copied from content so the API needn't import the map.
     x: integer("x").notNull(),
@@ -190,7 +202,6 @@ export const plots = pgTable(
     h: integer("h").notNull(),
   },
   (t) => [
-    check("plots_tier_range", sql`${t.tier} between 0 and 5`),
     // A player owns at most ONE plot at MVP — enforced in the DB, not just code.
     uniqueIndex("plots_one_per_owner")
       .on(t.ownerId)

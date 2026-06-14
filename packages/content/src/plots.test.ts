@@ -1,16 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  GATHER_NODES,
-  MAX_TIER,
-  nodeAvailable,
-  PLOT_H,
-  PLOT_TIERS,
-  PLOT_W,
-  PLOTS,
-  plotAt,
-  upgradeCost,
-} from "./plots";
+import { GATHER_NODES, nodeAvailable, PLOT_H, PLOT_W, PLOTS, plotAt } from "./plots";
 
 describe("plots content", () => {
   it("plot indices are 0..n-1 and unique", () => {
@@ -39,17 +29,6 @@ describe("plots content", () => {
     expect(plotAt(p.x + PLOT_W - 1, p.y + PLOT_H - 1)?.index).toBe(0);
     expect(plotAt(p.x - 1, p.y)).toBeNull();
     expect(plotAt(p.x + PLOT_W, p.y)).toBeNull();
-  });
-
-  it("tier ladder is monotonic and capped at MAX_TIER", () => {
-    expect(PLOT_TIERS).toHaveLength(MAX_TIER + 1);
-    for (let t = 2; t <= MAX_TIER; t++) {
-      const a = PLOT_TIERS[t - 1];
-      const b = PLOT_TIERS[t];
-      expect(b.wood + b.stone + b.shards).toBeGreaterThan(a.wood + a.stone + a.shards);
-    }
-    expect(upgradeCost(MAX_TIER)).toBeNull();
-    expect(upgradeCost(0)?.tier).toBe(1);
   });
 
   it("gather node ids are unique", () => {

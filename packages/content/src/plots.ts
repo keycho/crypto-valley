@@ -1,5 +1,5 @@
 /**
- * Land plots + gathering — GAME DATA AS CODE (P6).
+ * Land plots + gathering — GAME DATA AS CODE (P6, reworked in P7).
  *
  * The island is divided into a fixed grid of claimable 6×6 PLOTS arranged in a
  * ring around the central plaza. Positions are hand-locked (chosen by a
@@ -7,10 +7,9 @@
  * generator, the API zone rules, and the client all agree and cannot drift —
  * same pattern as `FARM`.
  *
- * Tiers are an upgrade ladder (empty → mansion); each step costs materials
- * (wood/stone gathered on the island) + Shards, consumed server-side through the
- * dupe-proof `moveItems`/`moveShards` helpers. There is NO token/NFT/deed here —
- * currency is Shards, off-chain.
+ * A claimed plot is a CANVAS: what gets built on it is free-form `structures`
+ * (see `structures.ts`), NOT a per-plot tier. Claiming costs a small Shards fee.
+ * There is NO token/NFT/deed here — currency is Shards, off-chain.
  */
 
 /** Plot footprint, in tiles. */
@@ -47,39 +46,6 @@ export const PLOTS: readonly PlotDef[] = [
 
 /** Shards charged to claim an unclaimed plot (small, off a 500 starting purse). */
 export const CLAIM_COST_SHARDS = 40;
-
-/** Highest buildable tier (0 = empty lot, 5 = mansion). */
-export const MAX_TIER = 5;
-
-export interface TierDef {
-  tier: number;
-  /** Display name + the sprite frame index in `plots.png`. */
-  name: string;
-  /** Cost to reach THIS tier from the previous one (tier 0 is free on claim). */
-  wood: number;
-  stone: number;
-  shards: number;
-}
-
-/**
- * The build ladder. `PLOT_TIERS[t]` is the state at tier `t`; its wood/stone/
- * shards are what an upgrade *into* tier `t` costs. Escalating so a shack is
- * quick and a mansion is a real project.
- */
-export const PLOT_TIERS: readonly TierDef[] = [
-  { tier: 0, name: "Empty Lot", wood: 0, stone: 0, shards: 0 },
-  { tier: 1, name: "Shack", wood: 8, stone: 0, shards: 20 },
-  { tier: 2, name: "Cottage", wood: 20, stone: 8, shards: 50 },
-  { tier: 3, name: "House", wood: 40, stone: 25, shards: 110 },
-  { tier: 4, name: "Manor", wood: 75, stone: 55, shards: 220 },
-  { tier: 5, name: "Mansion", wood: 130, stone: 110, shards: 420 },
-] as const;
-
-/** Cost to upgrade from `tier` to `tier+1`, or null if already maxed. */
-export function upgradeCost(tier: number): TierDef | null {
-  const next = tier + 1;
-  return next <= MAX_TIER ? PLOT_TIERS[next] : null;
-}
 
 /** Returns the plot whose footprint contains tile (tx,ty), or null. */
 export function plotAt(tx: number, ty: number): PlotDef | null {

@@ -8,7 +8,13 @@ export type ErrorCode =
   | "PLOT_TAKEN"
   | "ALREADY_OWN_PLOT"
   | "NOT_PLOT_OWNER"
-  | "PLOT_MAX_TIER";
+  // structures (P7 free-form building)
+  | "NO_PLOT"
+  | "OUT_OF_BOUNDS"
+  | "OVERLAP"
+  | "STRUCTURE_NOT_FOUND"
+  | "STRUCTURE_MAX_TIER"
+  | "STRUCTURE_STALE";
 
 /** An error carrying a typed `code` so callers can branch without string matching. */
 export class TypedError extends Error {

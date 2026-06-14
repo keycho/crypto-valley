@@ -1,15 +1,16 @@
 import { z } from "zod";
 
 /**
- * Town/world HTTP contract (P6): claimable plots + gathering nodes. Every body
- * is Zod-validated at the API boundary. Tier names/costs live in
- * packages/content; the wire only carries the tier *number* + ownership so the
- * client renders the right building and affordability.
+ * Town/world HTTP contract (P6, reworked in P7). A claimed plot is a CANVAS;
+ * what's built on it is a free-form list of `structures` (hut → skyscraper chain
+ * + standalones), NOT a per-plot tier. Every body is Zod-validated at the API
+ * boundary; structure defs/costs/footprints live in packages/content, the wire
+ * carries only ids + positions + the current tier so the client renders + checks
+ * affordability.
  */
 
 export const PlotViewSchema = z.object({
   index: z.number().int(),
-  tier: z.number().int(),
   /** null = unclaimed. */
   ownerId: z.string().nullable(),
   ownerName: z.string().nullable(),
@@ -20,6 +21,21 @@ export const PlotViewSchema = z.object({
   h: z.number().int(),
 });
 export type PlotView = z.infer<typeof PlotViewSchema>;
+
+/** A placed structure (P7). `defId` keys the content catalog; `tier` is its level. */
+export const StructureViewSchema = z.object({
+  id: z.string(),
+  /** Content index of the plot it sits on. */
+  plotIndex: z.number().int(),
+  defId: z.string(),
+  x: z.number().int(),
+  y: z.number().int(),
+  w: z.number().int(),
+  h: z.number().int(),
+  rotation: z.number().int(),
+  tier: z.number().int(),
+});
+export type StructureView = z.infer<typeof StructureViewSchema>;
 
 export const GatherKindSchema = z.enum(["tree", "rock"]);
 export type GatherKind = z.infer<typeof GatherKindSchema>;
@@ -48,25 +64,69 @@ export type MeView = z.infer<typeof MeViewSchema>;
 
 export const WorldStateSchema = z.object({
   plots: z.array(PlotViewSchema),
+  structures: z.array(StructureViewSchema),
   nodes: z.array(NodeViewSchema),
   me: MeViewSchema,
 });
 export type WorldState = z.infer<typeof WorldStateSchema>;
 
-export const WorldActionKindSchema = z.enum(["claim", "upgrade", "chop", "mine"]);
-export type WorldActionKind = z.infer<typeof WorldActionKindSchema>;
+// ---- POST /world/act : a discriminated union over the action ----------------
+const uuid = z.string().uuid();
 
-/** POST /world/act body. posX/posY are the actor's tile coords (range check). */
-export const WorldActionSchema = z.object({
-  characterId: z.string().uuid(),
-  action: WorldActionKindSchema,
-  /** Required for claim/upgrade. */
-  plotIndex: z.number().int().optional(),
-  /** Required for chop/mine. */
-  nodeId: z.string().max(32).optional(),
+/** Claim the unclaimed plot the player is standing on. */
+export const ClaimActionSchema = z.object({
+  action: z.literal("claim"),
+  characterId: uuid,
+  plotIndex: z.number().int(),
   posX: z.number().int(),
   posY: z.number().int(),
 });
+/** Chop a tree (→wood) the player is adjacent to. */
+export const ChopActionSchema = z.object({
+  action: z.literal("chop"),
+  characterId: uuid,
+  nodeId: z.string().max(32),
+  posX: z.number().int(),
+  posY: z.number().int(),
+});
+/** Mine a rock (→stone) the player is adjacent to. */
+export const MineActionSchema = z.object({
+  action: z.literal("mine"),
+  characterId: uuid,
+  nodeId: z.string().max(32),
+  posX: z.number().int(),
+  posY: z.number().int(),
+});
+/** Place a structure on your owned plot (free-form, top-left tile = x,y). */
+export const PlaceActionSchema = z.object({
+  action: z.literal("place"),
+  characterId: uuid,
+  defId: z.string().max(32),
+  x: z.number().int(),
+  y: z.number().int(),
+  rotation: z.number().int().min(0).max(3).default(0),
+});
+/** Upgrade one of your structures to its next chain tier (in place). */
+export const UpgradeActionSchema = z.object({
+  action: z.literal("upgrade"),
+  characterId: uuid,
+  structureId: uuid,
+});
+/** Remove one of your structures for a partial refund. */
+export const RemoveActionSchema = z.object({
+  action: z.literal("remove"),
+  characterId: uuid,
+  structureId: uuid,
+});
+
+export const WorldActionSchema = z.discriminatedUnion("action", [
+  ClaimActionSchema,
+  ChopActionSchema,
+  MineActionSchema,
+  PlaceActionSchema,
+  UpgradeActionSchema,
+  RemoveActionSchema,
+]);
 export type WorldAction = z.infer<typeof WorldActionSchema>;
 
 export const WorldActionResultSchema = z.object({

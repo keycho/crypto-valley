@@ -1,0 +1,1051 @@
+{
+  "id": "2886d18c-ee82-4917-a450-08d718cceecb",
+  "prevId": "8903a179-9b3b-4e0a-bd80-8731687e8194",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.accounts": {
+      "name": "accounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "accounts_email_unique": {
+          "name": "accounts_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.characters": {
+      "name": "characters",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "appearance": {
+          "name": "appearance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shards": {
+          "name": "shards",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 500
+        },
+        "energy": {
+          "name": "energy",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 100
+        },
+        "energy_updated": {
+          "name": "energy_updated",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "pos_zone": {
+          "name": "pos_zone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'farm'"
+        },
+        "pos_x": {
+          "name": "pos_x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 25
+        },
+        "pos_y": {
+          "name": "pos_y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 25
+        },
+        "skills": {
+          "name": "skills",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"farming\":0,\"mining\":0,\"foraging\":0,\"crafting\":0,\"archaeology\":0}'::jsonb"
+        },
+        "tutorial_step": {
+          "name": "tutorial_step",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "characters_account_id_accounts_id_fk": {
+          "name": "characters_account_id_accounts_id_fk",
+          "tableFrom": "characters",
+          "tableTo": "accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "characters_account_id_unique": {
+          "name": "characters_account_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "account_id"
+          ]
+        },
+        "characters_name_unique": {
+          "name": "characters_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "characters_shards_nonneg": {
+          "name": "characters_shards_nonneg",
+          "value": "\"characters\".\"shards\" >= 0"
+        },
+        "characters_name_len": {
+          "name": "characters_name_len",
+          "value": "length(\"characters\".\"name\") between 3 and 16"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.crops": {
+      "name": "crops",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "farm_id": {
+          "name": "farm_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "x": {
+          "name": "x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "y": {
+          "name": "y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "crop_id": {
+          "name": "crop_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "planted_at": {
+          "name": "planted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "watered_until": {
+          "name": "watered_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "growth_credit_ms": {
+          "name": "growth_credit_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "fertilizer": {
+          "name": "fertilizer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "season_planted": {
+          "name": "season_planted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "crops_farm_id_farms_id_fk": {
+          "name": "crops_farm_id_farms_id_fk",
+          "tableFrom": "crops",
+          "tableTo": "farms",
+          "columnsFrom": [
+            "farm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "crops_crop_id_item_defs_id_fk": {
+          "name": "crops_crop_id_item_defs_id_fk",
+          "tableFrom": "crops",
+          "tableTo": "item_defs",
+          "columnsFrom": [
+            "crop_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "crops_farm_xy": {
+          "name": "crops_farm_xy",
+          "nullsNotDistinct": false,
+          "columns": [
+            "farm_id",
+            "x",
+            "y"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.farm_tiles": {
+      "name": "farm_tiles",
+      "schema": "",
+      "columns": {
+        "farm_id": {
+          "name": "farm_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "x": {
+          "name": "x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "y": {
+          "name": "y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "watered_until": {
+          "name": "watered_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "farm_tiles_farm_id_farms_id_fk": {
+          "name": "farm_tiles_farm_id_farms_id_fk",
+          "tableFrom": "farm_tiles",
+          "tableTo": "farms",
+          "columnsFrom": [
+            "farm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "farm_tiles_farm_id_x_y_pk": {
+          "name": "farm_tiles_farm_id_x_y_pk",
+          "columns": [
+            "farm_id",
+            "x",
+            "y"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.farms": {
+      "name": "farms",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Abandoned Plot'"
+        },
+        "layout_rev": {
+          "name": "layout_rev",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "deed_asset_id": {
+          "name": "deed_asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "farms_owner_id_characters_id_fk": {
+          "name": "farms_owner_id_characters_id_fk",
+          "tableFrom": "farms",
+          "tableTo": "characters",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "farms_owner_id_unique": {
+          "name": "farms_owner_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "owner_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.inventory_slots": {
+      "name": "inventory_slots",
+      "schema": "",
+      "columns": {
+        "character_id": {
+          "name": "character_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "container": {
+          "name": "container",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'backpack'"
+        },
+        "slot": {
+          "name": "slot",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_meta": {
+          "name": "instance_meta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "inv_by_item": {
+          "name": "inv_by_item",
+          "columns": [
+            {
+              "expression": "character_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "inventory_slots_character_id_characters_id_fk": {
+          "name": "inventory_slots_character_id_characters_id_fk",
+          "tableFrom": "inventory_slots",
+          "tableTo": "characters",
+          "columnsFrom": [
+            "character_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "inventory_slots_item_id_item_defs_id_fk": {
+          "name": "inventory_slots_item_id_item_defs_id_fk",
+          "tableFrom": "inventory_slots",
+          "tableTo": "item_defs",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "inventory_slots_character_id_container_slot_pk": {
+          "name": "inventory_slots_character_id_container_slot_pk",
+          "columns": [
+            "character_id",
+            "container",
+            "slot"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "inventory_qty_pos": {
+          "name": "inventory_qty_pos",
+          "value": "\"inventory_slots\".\"qty\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.item_defs": {
+      "name": "item_defs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stack_max": {
+          "name": "stack_max",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 999
+        },
+        "base_value": {
+          "name": "base_value",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "tradeable": {
+          "name": "tradeable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "mintable": {
+          "name": "mintable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "meta": {
+          "name": "meta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ledger": {
+      "name": "ledger",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "ledger_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "character_id": {
+          "name": "character_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delta_shards": {
+          "name": "delta_shards",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ref": {
+          "name": "ref",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ledger_by_character": {
+          "name": "ledger_by_character",
+          "columns": [
+            {
+              "expression": "character_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.machine_jobs": {
+      "name": "machine_jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "structure_id": {
+          "name": "structure_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipe_id": {
+          "name": "recipe_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finishes_at": {
+          "name": "finishes_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collected": {
+          "name": "collected",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "jobs_ready": {
+          "name": "jobs_ready",
+          "columns": [
+            {
+              "expression": "structure_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "not \"machine_jobs\".\"collected\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "machine_jobs_structure_id_structures_id_fk": {
+          "name": "machine_jobs_structure_id_structures_id_fk",
+          "tableFrom": "machine_jobs",
+          "tableTo": "structures",
+          "columnsFrom": [
+            "structure_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.plots": {
+      "name": "plots",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "plot_index": {
+          "name": "plot_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "x": {
+          "name": "x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "y": {
+          "name": "y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "w": {
+          "name": "w",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "h": {
+          "name": "h",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "plots_one_per_owner": {
+          "name": "plots_one_per_owner",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"plots\".\"owner_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "plots_owner_id_characters_id_fk": {
+          "name": "plots_owner_id_characters_id_fk",
+          "tableFrom": "plots",
+          "tableTo": "characters",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "plots_plot_index_unique": {
+          "name": "plots_plot_index_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "plot_index"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.structures": {
+      "name": "structures",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "farm_id": {
+          "name": "farm_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "plot_id": {
+          "name": "plot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "def_id": {
+          "name": "def_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "x": {
+          "name": "x",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "y": {
+          "name": "y",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "w": {
+          "name": "w",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "h": {
+          "name": "h",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "rotation": {
+          "name": "rotation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "level": {
+          "name": "level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "state": {
+          "name": "state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "structures_by_plot": {
+          "name": "structures_by_plot",
+          "columns": [
+            {
+              "expression": "plot_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "structures_farm_id_farms_id_fk": {
+          "name": "structures_farm_id_farms_id_fk",
+          "tableFrom": "structures",
+          "tableTo": "farms",
+          "columnsFrom": [
+            "farm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "structures_plot_id_plots_id_fk": {
+          "name": "structures_plot_id_plots_id_fk",
+          "tableFrom": "structures",
+          "tableTo": "plots",
+          "columnsFrom": [
+            "plot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "structures_owner_xor": {
+          "name": "structures_owner_xor",
+          "value": "(\"structures\".\"farm_id\" is null) <> (\"structures\".\"plot_id\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.world_nodes": {
+      "name": "world_nodes",
+      "schema": "",
+      "columns": {
+        "node_id": {
+          "name": "node_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "harvested_at": {
+          "name": "harvested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

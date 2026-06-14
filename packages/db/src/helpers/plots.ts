@@ -3,21 +3,12 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Tx } from "../client";
 import { TypedError } from "../errors";
 import { plots } from "../schema";
-import { moveItems } from "./moveItems";
 import { moveShards } from "./moveShards";
-
-/** Per-tier upgrade cost (materials + Shards). Index by target tier. */
-export interface TierCost {
-  wood: number;
-  stone: number;
-  shards: number;
-}
 
 export interface PlotRow {
   id: string;
   plotIndex: number;
   ownerId: string | null;
-  tier: number;
 }
 
 /**
@@ -59,54 +50,10 @@ export async function claimPlot(
 
   await tx
     .update(plots)
-    .set({ ownerId: characterId, tier: 0, claimedAt: at })
+    .set({ ownerId: characterId, claimedAt: at })
     .where(eq(plots.id, plot.id));
 
-  return { id: plot.id, plotIndex: plot.plotIndex, ownerId: characterId, tier: 0 };
-}
-
-/**
- * Upgrade a plot owned by `characterId` to the next tier, consuming the tier's
- * materials (`moveItems`) and Shards (`moveShards`, ledgered) in one atomic
- * transaction. The plot row is locked first, so the next tier + its cost are
- * computed from authoritative state (no TOCTOU on the tier).
- *
- * `tierCosts[t]` is the cost to reach tier `t`; the ladder length caps the tier.
- *
- * @throws TypedError `PLOT_NOT_FOUND` | `NOT_PLOT_OWNER` | `PLOT_MAX_TIER` |
- *                    `INSUFFICIENT_ITEMS` | `INSUFFICIENT_FUNDS`
- */
-export async function upgradePlot(
-  tx: Tx,
-  characterId: string,
-  plotIndex: number,
-  tierCosts: readonly TierCost[],
-): Promise<PlotRow> {
-  const [plot] = await tx
-    .select()
-    .from(plots)
-    .where(eq(plots.plotIndex, plotIndex))
-    .for("update");
-  if (!plot) throw new TypedError("PLOT_NOT_FOUND", `no plot #${plotIndex}`);
-  if (plot.ownerId !== characterId) {
-    throw new TypedError("NOT_PLOT_OWNER", "you do not own this plot");
-  }
-
-  const next = plot.tier + 1;
-  if (next >= tierCosts.length) throw new TypedError("PLOT_MAX_TIER", "already at max tier");
-  const cost = tierCosts[next];
-
-  // Materials first, then Shards — both inside this tx, so any shortfall throws
-  // and rolls the whole thing back (no partial spend, no dupes).
-  await moveItems(tx, [
-    { characterId, itemId: "wood", qty: -cost.wood },
-    { characterId, itemId: "stone", qty: -cost.stone },
-  ]);
-  await moveShards(tx, characterId, -cost.shards, "plot_upgrade", plot.id);
-
-  await tx.update(plots).set({ tier: next }).where(eq(plots.id, plot.id));
-
-  return { id: plot.id, plotIndex: plot.plotIndex, ownerId: characterId, tier: next };
+  return { id: plot.id, plotIndex: plot.plotIndex, ownerId: characterId };
 }
 
 /** A convenience the API uses for the "you already own a plot?" guard. */
