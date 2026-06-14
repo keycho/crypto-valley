@@ -38,13 +38,11 @@ const TILE = 16;
 const COLS = 16;
 
 const terrains = join(EXT, "1_Terrains_and_Fences_Singles_16x16");
-const city = join(EXT, "2_City_Terrains_Singles_16x16");
 const props = join(EXT, "3_City_Props_Singles_16x16");
 const camping = join(EXT, "11_Camping_Singles_16x16");
 const shops = join(EXT, "9_Shopping_Center_and_Markets_Singles_16x16");
 
 const tf = (n: string) => join(terrains, `ME_Singles_Terrains_and_Fences_16x16_${n}.png`);
-const ct = (n: string) => join(city, `ME_Singles_City_Terrains_16x16_${n}.png`);
 const cp = (n: string) => join(props, `ME_Singles_City_Props_16x16_${n}.png`);
 const cs = (n: string) => join(camping, `ME_Singles_Camping_16x16_${n}.png`);
 const sh = (n: string) => join(shops, `ME_Singles_Shopping_Center_and_Markets_16x16_${n}.png`);
@@ -67,16 +65,33 @@ function fillRect(p: PNG, x0: number, y0: number, w: number, h: number, c: [numb
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) setPx(p, x, y, c);
 }
 
+// ---- Sunnyside source sheet (16px) -----------------------------------------
+// The cozy "Warm Ages" terrain now comes from the LimeZu Sunnyside pack, whose
+// ground tiles all live in one 64x64 sheet. We crop named 16x16 tiles by their
+// (col,row) on that sheet; props/buildings still come from the per-file sources
+// below until they're migrated. Same seed in => same atlas out (no IO at runtime).
+const SUN = join(
+  repoRoot,
+  "assets-src/sunnyside/Sunnyside_World_ASSET_PACK_V2.1/Sunnyside_World_Assets",
+);
+const SS_SHEET = readPng(join(SUN, "Tileset/spr_tileset_sunnysideworld_16px.png"));
+/** Crop a single 16x16 tile from the Sunnyside tileset at tile coords (tx,ty). */
+function ssTile(tx: number, ty: number): PNG {
+  const p = new PNG({ width: TILE, height: TILE });
+  PNG.bitblt(SS_SHEET, p, tx * TILE, ty * TILE, TILE, TILE, 0, 0);
+  return p;
+}
+
 // ---- 1x1 terrain + decor singles -------------------------------------------
-const SINGLE_TILES: Array<{ name: string; file: string }> = [
-  { name: "grass", file: tf("Grass_Water_1_23") },
-  { name: "grass_b", file: tf("Grass_Water_1_9") },
-  { name: "grass_c", file: tf("Grass_Water_1_17") },
-  { name: "water", file: tf("Grass_Water_1_22") },
+const SINGLE_TILES: Array<{ name: string; file?: string; png?: PNG }> = [
+  { name: "grass", png: ssTile(1, 1) },
+  { name: "grass_b", png: ssTile(3, 2) },
+  { name: "grass_c", png: ssTile(5, 2) },
+  { name: "water", png: ssTile(4, 1) },
   { name: "shore_west", file: tf("Grass_Water_1_13") },
-  { name: "concrete", file: ct("Sidewalk_1_9") },
-  { name: "road", file: ct("Asphalt_1_Variation_2") },
-  { name: "road_line", file: ct("Asphalt_1_Variation_5") },
+  { name: "concrete", png: ssTile(5, 1) },
+  { name: "road", png: ssTile(11, 3) },
+  { name: "road_line", png: ssTile(11, 4) },
   // overgrowth + street decor (1x1), layered on ground_detail
   { name: "weed_a", file: tf("Props_Grass_9") },
   { name: "weed_b", file: tf("Props_Grass_10") },
@@ -239,7 +254,7 @@ function makeTerminal(screen: "off" | "on"): PNG {
   return p;
 }
 
-const baseConcrete = readPng(ct("Sidewalk_1_9"));
+const baseConcrete = ssTile(5, 1);
 // Farm soil tiles (the urban pack has none) — warm earth, §2.1 palette.
 // variant: bare soil / tilled (furrowed) / tilled_wet (watered = visibly darker).
 function makeSoil(variant: "soil" | "tilled" | "tilled_wet"): PNG {
@@ -615,7 +630,7 @@ const synthMulti = synthObjects.filter((o) => !(o.png.width === TILE && o.png.he
 // Singles (file + synth 1x1) wrap across as many rows as needed; the collision
 // marker and the multi-tile objects are placed below them.
 const singleSources = [
-  ...SINGLE_TILES.map((t) => ({ name: t.name, png: readPng(t.file) })),
+  ...SINGLE_TILES.map((t) => ({ name: t.name, png: t.png ?? readPng(t.file!) })),
   ...synthSingles.map((s) => ({ name: s.name, png: s.png })),
 ];
 const singleRows = Math.ceil(singleSources.length / COLS);
