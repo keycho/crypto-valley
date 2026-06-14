@@ -328,11 +328,10 @@ function writeTerminalSheet(): void {
   writeFileSync(join(spriteDir, "terminal.png"), PNG.sync.write(sheet));
 }
 
-// ---- P6: per-tier plot buildings + gathering nodes --------------------------
-// Drawn directly in the §2 "Overgrown Terminal" palette (warm walls, mossy
-// roofs, amber windows; the mansion gets the town's only other scarce cold
-// glow). Each ships as its own spritesheet (NOT in the static atlas, NOT
-// palette-shifted) so the client can pick a frame by tier / depleted state.
+// ---- structures + gathering sprites -----------------------------------------
+// Warm earthy palette (warm walls, mossy roofs, amber windows; tall buildings get
+// a warm rooftop light). Each ships as its own spritesheet (NOT in the static
+// atlas, NOT palette-shifted) so the client picks a frame by tier / depleted state.
 const HP = {
   wall: [200, 160, 107, 255] as const,
   wallSh: [150, 120, 82, 255] as const,
@@ -342,8 +341,6 @@ const HP = {
   wood: [92, 74, 61, 255] as const,
   win: [26, 29, 36, 255] as const,
   winLit: [232, 179, 106, 255] as const,
-  glow: [52, 211, 153, 255] as const,
-  glowHi: [167, 243, 208, 255] as const,
   trunk: [92, 64, 44, 255] as const,
   trunkSh: [64, 44, 30, 255] as const,
   leaf: [86, 132, 72, 255] as const,
@@ -376,12 +373,12 @@ function gable(p: PNG, cx: number, topY: number, baseW: number, rh: number): voi
 }
 
 // ---- P7: free-form structures (vertical chain + standalones) ----------------
-// Extra palette beyond HP: browner wood walls + cooler glass/data accents.
+// Extra palette beyond HP: browner wood walls + a warm beacon highlight for the
+// tall-building crowns (ages theme — warm light, not cold tech).
 const ST = {
   woodWall: [156, 107, 74, 255] as const, // #9C6B4A (art-bible "wood/structures")
   woodWallSh: [120, 82, 56, 255] as const,
-  cyan: [34, 211, 238, 255] as const, // signal cyan (data node)
-  cyanHi: [165, 243, 252, 255] as const,
+  beaconHi: [255, 224, 160, 255] as const, // warm amber highlight
 } as const;
 
 interface ChainParams {
@@ -447,15 +444,16 @@ function drawChain(p: PNG, cx: number, baseY: number, t: ChainParams): void {
     fillRect(p, chX, top - 6, 5, 8, c(HP.wood));
     outlineRect(p, chX, top - 6, 5, 8, HP.edge);
   } else if (t.crown === "green") {
-    fillRect(p, cx - 3, top - 5, 6, 4, c(HP.glow));
-    setPx(p, cx - 2, top - 4, c(HP.glowHi));
+    // a warm rooftop light (modern building, ages theme)
+    fillRect(p, cx - 3, top - 5, 6, 4, c(HP.winLit));
+    setPx(p, cx - 2, top - 4, c(ST.beaconHi));
   } else if (t.crown === "beacon") {
-    // antenna mast + terminal-green beacon — the dead chain's one living light
+    // antenna mast + a warm beacon light atop the skyscraper
     const mastTop = top - 14;
     fillRect(p, cx - 1, mastTop, 2, 14, c(HP.edge));
     fillRect(p, cx - 4, mastTop + 5, 9, 1, c(HP.edge)); // strut
-    fillRect(p, cx - 3, mastTop - 3, 6, 4, c(HP.glow));
-    fillRect(p, cx - 1, mastTop - 5, 2, 3, c(HP.glowHi));
+    fillRect(p, cx - 3, mastTop - 3, 6, 4, c(HP.winLit));
+    fillRect(p, cx - 1, mastTop - 5, 2, 3, c(ST.beaconHi));
   }
 }
 
@@ -499,22 +497,6 @@ function drawLamp(p: PNG, cx: number, baseY: number): void {
     setPx(p, gx, gy, [255, 183, 105, 90]); // faint warm halo
   }
 }
-function drawDataNode(p: PNG, cx: number, baseY: number): void {
-  fillRect(p, cx - 10, baseY - 6, 20, 6, c(HP.stone));
-  fillRect(p, cx - 10, baseY - 6, 20, 2, c(HP.stoneHi));
-  outlineRect(p, cx - 10, baseY - 6, 20, 6, HP.edge);
-  const shard = (sx: number, h: number, w: number): void => {
-    for (let i = 0; i < h; i++) {
-      const ww = Math.max(1, Math.round(w * (1 - i / h)));
-      fillRect(p, sx - Math.round(ww / 2), baseY - 6 - i, ww, 1, c(i < h * 0.4 ? ST.cyanHi : ST.cyan));
-    }
-    setPx(p, sx, baseY - 6, c(HP.edge));
-  };
-  shard(cx - 6, 12, 4);
-  shard(cx + 6, 14, 5);
-  shard(cx, 18, 6);
-}
-
 /** Unclaimed-plot marker — a surveyor's stake + a small "for claim" sign. */
 function drawStake(p: PNG, cx: number, baseY: number): void {
   fillRect(p, cx - 1, baseY - 18, 3, 18, c(HP.wood));
@@ -525,15 +507,16 @@ function drawStake(p: PNG, cx: number, baseY: number): void {
   fillRect(p, cx - 6, baseY - 23, 10, 1, c(HP.wood));
 }
 
-/** 10 frames, 64×112, bottom-anchored: 6 chain tiers + wall/gate/lamp/data-node.
+/** 9 frames, 64×112, bottom-anchored: 6 chain tiers + wall/gate/lamp.
  *  The client places by frame = StructureDef.frame, origin (0.5, 1). */
 function writeStructuresSheet(): void {
   const CW = 64;
   const CH = 112;
-  const standalones = [drawWallSeg, drawGate, drawLamp, drawDataNode];
-  const sheet = new PNG({ width: CW * 10, height: CH });
+  const standalones = [drawWallSeg, drawGate, drawLamp];
+  const FRAMES = 6 + standalones.length;
+  const sheet = new PNG({ width: CW * FRAMES, height: CH });
   sheet.data.fill(0);
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < FRAMES; i++) {
     const f = new PNG({ width: CW, height: CH });
     f.data.fill(0);
     if (i < 6) drawChain(f, CW / 2, CH - 2, CHAIN[i]);

@@ -182,6 +182,23 @@
   quest, can't double-claim; dailies reset on the game-day; progress persists.
   Screenshots: docs/screenshots/p8-quest-*.png. typecheck/test (68)/lint green.
 
+## Done — P8.5: onboarding + theme cleanup
+
+- **Findable gather nodes.** Added an onboarding cluster of trees + rocks right
+  around the plaza/plot ring (nearest tree is 3 tiles from spawn; 12 trees total),
+  all validated walkable/off-plot. Gather nodes now render a warm "interactable"
+  gold ring (distinct from baked decoration), and while a wood quest (Timber /
+  daily) is active the nearest tree gets a brighter ring + a "Wood ↓" ping — so a
+  brand-new player following Timber finds wood in seconds.
+- **Ages-themed build palette.** Removed "Data Node" (scrapped archaeology
+  leftover); the build palette is now Hut / Wall / Gate / Lamp + the
+  hut→skyscraper chain. Re-coloured the tower/skyscraper crown lights from
+  terminal-green to warm amber and dropped the dead-civ palette refs in the sprite
+  generator. structures.png is now 9 frames. No structure-system changes.
+- Verified (browser): a fresh character finds + chops a nearby tree; palette shows
+  no Data Node; multiplayer/plots/building/quests/farming intact. typecheck/test
+  (68)/lint green. Screenshots: docs/screenshots/p8_5-*.png.
+
 ## Next session
 
 - [ ] **P9 — land income (tax) + marketplace (buy/sell items)**

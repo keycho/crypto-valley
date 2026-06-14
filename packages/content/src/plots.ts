@@ -96,6 +96,16 @@ export const GATHER_NODES: readonly GatherNodeDef[] = [
   { id: "tree_10", kind: "tree", x: 15, y: 21 },
   { id: "rock_11", kind: "rock", x: 22, y: 37 },
   { id: "tree_12", kind: "tree", x: 26, y: 37 },
+  // Onboarding cluster: trees + rocks right around the plaza/plot ring so a new
+  // player chasing the "Timber" quest finds wood within a few steps of spawn.
+  { id: "tree_13", kind: "tree", x: 31, y: 23 },
+  { id: "tree_14", kind: "tree", x: 28, y: 23 },
+  { id: "tree_15", kind: "tree", x: 35, y: 24 },
+  { id: "tree_16", kind: "tree", x: 27, y: 26 },
+  { id: "tree_17", kind: "tree", x: 39, y: 24 },
+  { id: "rock_18", kind: "rock", x: 30, y: 29 },
+  { id: "rock_19", kind: "rock", x: 26, y: 28 },
+  { id: "rock_20", kind: "rock", x: 36, y: 28 },
 ] as const;
 
 export const GATHER_NODE_BY_ID: Record<string, GatherNodeDef> = Object.fromEntries(

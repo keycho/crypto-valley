@@ -51,6 +51,8 @@ function rectsOverlap(
 export class TownController {
   private outlines: Phaser.GameObjects.Graphics; // plot borders (on render)
   private uiGfx: Phaser.GameObjects.Graphics; // ghost / selection (every frame)
+  private gatherGfx: Phaser.GameObjects.Graphics; // gather-node affordance rings
+  private gatherPing: Phaser.GameObjects.Text; // "nearest wood" hint
   private ghost: Phaser.GameObjects.Sprite;
   private stakes = new Map<number, Phaser.GameObjects.Image>();
   private labels = new Map<number, Phaser.GameObjects.Text>();
@@ -86,6 +88,19 @@ export class TownController {
   ) {
     this.outlines = scene.add.graphics().setDepth(1.5);
     this.uiGfx = scene.add.graphics().setDepth(1.6);
+    this.gatherGfx = scene.add.graphics().setDepth(2.5);
+    this.gatherPing = scene.add
+      .text(0, 0, "", {
+        fontFamily: "monospace",
+        fontSize: "9px",
+        color: "#0b140f",
+        backgroundColor: "#ffd98a",
+        padding: { x: 3, y: 1 },
+      })
+      .setOrigin(0.5, 1)
+      .setResolution(4)
+      .setDepth(1_500_001)
+      .setVisible(false);
     this.ghost = scene.add.sprite(0, 0, "structures", 0).setOrigin(0.5, 1).setAlpha(0.55).setVisible(false);
     this.ghost.setDepth(1_400_000);
 
@@ -114,6 +129,8 @@ export class TownController {
     this.scene.input.off("pointerdown", this.onPointerDown);
     this.outlines.destroy();
     this.uiGfx.destroy();
+    this.gatherGfx.destroy();
+    this.gatherPing.destroy();
     this.ghost.destroy();
     for (const m of [this.stakes, this.labels, this.structures, this.structShadows, this.nodes, this.nodeShadows]) {
       for (const o of m.values()) o.destroy();
@@ -136,6 +153,7 @@ export class TownController {
     }
     this.updateProximity();
     this.drawUiOverlay();
+    this.drawGatherHints();
 
     this.pollAcc += deltaMs;
     if (this.pollAcc >= 1500 && !this.busy) {
@@ -290,6 +308,57 @@ export class TownController {
         this.uiGfx.strokeRect(s.x * TILE_SIZE, s.y * TILE_SIZE, s.w * TILE_SIZE, s.h * TILE_SIZE);
       }
     }
+  }
+
+  /**
+   * Gather affordance: a warm "interactable" ring on every available node (so a
+   * choppable tree reads differently from baked decoration), plus a brighter ring
+   * + a "Wood" ping on the nearest tree while a wood quest is active — so a brand-
+   * new player following the Timber quest can find wood in seconds.
+   */
+  private drawGatherHints(): void {
+    this.gatherGfx.clear();
+    const world = useWorldStore.getState().world;
+    if (!world) {
+      this.gatherPing.setVisible(false);
+      return;
+    }
+    const t = this.scene.time.now;
+    const pulse = 0.5 + 0.5 * Math.sin(t / 350);
+    for (const n of world.nodes) {
+      if (!n.available) continue;
+      const cx = n.x * TILE_SIZE + TILE_SIZE / 2;
+      const by = n.y * TILE_SIZE + TILE_SIZE;
+      this.gatherGfx.lineStyle(1.5, 0xf2c879, 0.45 + 0.2 * pulse);
+      this.gatherGfx.strokeEllipse(cx, by - 2, 18, 8);
+    }
+
+    const woodQuest = world.quests.some(
+      (q) => (q.id === "q2_timber" || q.id === "daily_wood") && q.status === "active",
+    );
+    if (woodQuest) {
+      const { tx, ty } = this.getActor();
+      let best: { x: number; y: number } | null = null;
+      let bestD = Infinity;
+      for (const n of world.nodes) {
+        if (n.kind !== "tree" || !n.available) continue;
+        const d = Math.abs(n.x - tx) + Math.abs(n.y - ty);
+        if (d < bestD) {
+          bestD = d;
+          best = { x: n.x, y: n.y };
+        }
+      }
+      if (best && bestD > 1) {
+        const cx = best.x * TILE_SIZE + TILE_SIZE / 2;
+        const by = best.y * TILE_SIZE + TILE_SIZE;
+        this.gatherGfx.lineStyle(2, 0xffd98a, 0.85);
+        this.gatherGfx.strokeEllipse(cx, by - 2, 22, 10);
+        const bounce = Math.round(2 * Math.sin(t / 220));
+        this.gatherPing.setText("Wood ↓").setPosition(cx, best.y * TILE_SIZE - 6 + bounce).setVisible(true);
+        return;
+      }
+    }
+    this.gatherPing.setVisible(false);
   }
 
   // ------------------------------------------------------------- server round-trip

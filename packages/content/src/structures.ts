@@ -3,8 +3,8 @@
  *
  * A claimed plot is a CANVAS: the owner freely places structures on it and grows
  * them vertically up an upgrade chain (hut → cabin → house → tower → high-rise →
- * skyscraper) — a player-built skyline rising over the reclaimed island. Plus a
- * few standalone props (wall, gate, lamp, resource node).
+ * skyscraper) — a player-built skyline advancing through the ages. Plus a few
+ * standalone build pieces (wall, gate, lamp).
  *
  * All costs are wood/stone (gathered on the island) + Shards, consumed
  * server-side via the dupe-proof `moveItems`/`moveShards` helpers. Footprints are
@@ -56,7 +56,6 @@ export const STRUCTURE_DEFS: readonly StructureDef[] = [
   { id: "wall", name: "Wall", family: "standalone", footprint: { w: 1, h: 1 }, tier: 1, cost: { wood: 4, stone: 2, shards: 2 }, nextTier: null, frame: 6, placeable: true },
   { id: "gate", name: "Gate", family: "standalone", footprint: { w: 1, h: 1 }, tier: 1, cost: { wood: 8, stone: 4, shards: 8 }, nextTier: null, frame: 7, placeable: true },
   { id: "lamp", name: "Lamp", family: "standalone", footprint: { w: 1, h: 1 }, tier: 1, cost: { wood: 2, stone: 1, shards: 10 }, nextTier: null, frame: 8, placeable: true },
-  { id: "resource_node", name: "Data Node", family: "standalone", footprint: { w: 2, h: 2 }, tier: 1, cost: { wood: 20, stone: 20, shards: 40 }, nextTier: null, frame: 9, placeable: true },
 ] as const;
 
 export const STRUCTURE_BY_ID: Record<string, StructureDef> = Object.fromEntries(
