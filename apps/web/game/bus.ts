@@ -20,6 +20,10 @@ export type GameEvents = {
   structureRemove: { id: string };
   /** HUD Quest-Log "Claim" button -> TownController (server-authoritative reward). */
   questClaim: { id: string };
+  /** Land-market: list a plot for sale / unlist / buy a listed plot. */
+  plotList: { index: number; price: number };
+  plotUnlist: { index: number };
+  plotBuy: { index: number };
 };
 
 export const gameBus = mitt<GameEvents>();

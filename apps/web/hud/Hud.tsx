@@ -7,14 +7,54 @@ import { Fps } from "./Fps";
 import { Hotbar } from "./Hotbar";
 import { HudBridge } from "./HudBridge";
 import { Inventory } from "./Inventory";
+import { LandMarket } from "./LandMarket";
 import { Online } from "./Online";
 import { PlotPanel } from "./PlotPanel";
 import { QuestLog } from "./QuestLog";
 import { QuestTracker } from "./QuestTracker";
 import { Toast } from "./Toast";
 import { useHotbarKeys } from "./useHotbarKeys";
+import { useMarketStore } from "../stores/market";
 import { useQuestUi } from "../stores/questUi";
 import { useWorldStore } from "../stores/world";
+
+const hudBtn: React.CSSProperties = {
+  pointerEvents: "auto",
+  position: "relative",
+  padding: "4px 10px",
+  background: "rgba(43,34,24,0.9)",
+  border: "1px solid #5c4a3d",
+  borderRadius: 8,
+  color: "#f2e8d5",
+  font: "inherit",
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+/** Opens the Land Market board; dot when any plot is currently listed. */
+function MarketButton() {
+  const toggle = useMarketStore((s) => s.toggleBoard);
+  const anyListed = useWorldStore((s) => (s.world?.plots ?? []).some((p) => p.price !== null));
+  return (
+    <button onClick={toggle} style={hudBtn}>
+      🏞 Market
+      {anyListed ? (
+        <span
+          style={{
+            position: "absolute",
+            top: -4,
+            right: -4,
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: "#34d399",
+            border: "1px solid #0b140f",
+          }}
+        />
+      ) : null}
+    </button>
+  );
+}
 
 /** Top-right button that opens the Quest Log; dot when a reward is claimable. */
 function QuestButton() {
@@ -80,6 +120,7 @@ export function Hud() {
           <EnergyBar />
         </div>
         <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <MarketButton />
           <QuestButton />
           <Fps />
         </div>
@@ -102,10 +143,11 @@ export function Hud() {
             textAlign: "right",
           }}
         >
-          WASD move · Space use/claim/chop · 🔨 Build · Q quests · I bag · Enter chat
+          WASD move · Space use/claim/chop · 🔨 Build · 🏞 Market · Q quests · Enter chat
         </div>
         <PlotPanel />
         <QuestLog />
+        <LandMarket />
         <Inventory />
       </div>
     </>

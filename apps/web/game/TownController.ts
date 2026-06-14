@@ -7,19 +7,23 @@ import { gameBus } from "./bus";
 import { TILE_SIZE } from "./constants";
 import { useBuildStore } from "../stores/build";
 import { useFarmStore } from "../stores/farm";
+import { useMarketStore } from "../stores/market";
 import { useMpStore } from "../stores/mp";
 import { useQuestUi } from "../stores/questUi";
 import { useWorldStore } from "../stores/world";
 
 const ERRORS: Record<string, string> = {
-  ALREADY_OWN_PLOT: "You already own a plot",
+  PLOT_CAP_REACHED: "Plot limit reached (8)",
   PLOT_TAKEN: "That plot is already claimed",
-  NOT_PLOT_OWNER: "Not your structure",
+  NOT_PLOT_OWNER: "Not yours",
   NO_PLOT: "Claim a plot first",
   OUT_OF_BOUNDS: "Must sit inside your plot",
   OVERLAP: "Overlaps another structure",
   STRUCTURE_MAX_TIER: "Already maxed out",
   STRUCTURE_STALE: "It just changed — try again",
+  NOT_LISTED: "That plot isn't for sale",
+  CANT_BUY_OWN: "That's already your plot",
+  BAD_PRICE: "Enter a valid price",
   INSUFFICIENT_FUNDS: "Not enough Shards",
   INSUFFICIENT_ITEMS: "Not enough materials",
   INSUFFICIENT_ENERGY: "Too tired",
@@ -60,6 +64,7 @@ export class TownController {
   private structShadows = new Map<string, Phaser.GameObjects.Image>();
   private nodes = new Map<string, Phaser.GameObjects.Sprite>();
   private nodeShadows = new Map<string, Phaser.GameObjects.Image>();
+  private saleSigns = new Map<number, Phaser.GameObjects.Text>(); // "FOR SALE" markers
   private useKey: Phaser.Input.Keyboard.Key;
   private escKey: Phaser.Input.Keyboard.Key;
   private questKey: Phaser.Input.Keyboard.Key;
@@ -78,6 +83,18 @@ export class TownController {
   private onQuestClaim = ({ id }: { id: string }): void => {
     const characterId = useFarmStore.getState().characterId;
     if (characterId) void this.send({ action: "claimQuest", characterId, questId: id });
+  };
+  private onList = ({ index, price }: { index: number; price: number }): void => {
+    const characterId = useFarmStore.getState().characterId;
+    if (characterId) void this.send({ action: "listPlot", characterId, plotIndex: index, price, currency: "shards" });
+  };
+  private onUnlist = ({ index }: { index: number }): void => {
+    const characterId = useFarmStore.getState().characterId;
+    if (characterId) void this.send({ action: "unlistPlot", characterId, plotIndex: index });
+  };
+  private onBuy = ({ index }: { index: number }): void => {
+    const characterId = useFarmStore.getState().characterId;
+    if (characterId) void this.send({ action: "buyPlot", characterId, plotIndex: index });
   };
   private onPointerDown = (pointer: Phaser.Input.Pointer): void => this.handleClick(pointer);
 
@@ -114,6 +131,9 @@ export class TownController {
     gameBus.on("structureUpgrade", this.onUpgrade);
     gameBus.on("structureRemove", this.onRemove);
     gameBus.on("questClaim", this.onQuestClaim);
+    gameBus.on("plotList", this.onList);
+    gameBus.on("plotUnlist", this.onUnlist);
+    gameBus.on("plotBuy", this.onBuy);
     scene.input.on("pointerdown", this.onPointerDown);
 
     const st = useWorldStore.getState().world;
@@ -126,26 +146,34 @@ export class TownController {
     gameBus.off("structureUpgrade", this.onUpgrade);
     gameBus.off("structureRemove", this.onRemove);
     gameBus.off("questClaim", this.onQuestClaim);
+    gameBus.off("plotList", this.onList);
+    gameBus.off("plotUnlist", this.onUnlist);
+    gameBus.off("plotBuy", this.onBuy);
     this.scene.input.off("pointerdown", this.onPointerDown);
     this.outlines.destroy();
     this.uiGfx.destroy();
     this.gatherGfx.destroy();
     this.gatherPing.destroy();
     this.ghost.destroy();
-    for (const m of [this.stakes, this.labels, this.structures, this.structShadows, this.nodes, this.nodeShadows]) {
+    for (const m of [this.stakes, this.labels, this.structures, this.structShadows, this.nodes, this.nodeShadows, this.saleSigns]) {
       for (const o of m.values()) o.destroy();
       m.clear();
     }
     useWorldStore.getState().patch({ standingPlot: null, nearNode: null });
     useBuildStore.getState().setBuildMode(false);
+    useMarketStore.getState().setFocusBuy(null);
+    useMarketStore.getState().setBoardOpen(false);
   }
 
   update(deltaMs: number): void {
     if (Phaser.Input.Keyboard.JustDown(this.useKey)) void this.use();
     if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
       const b = useBuildStore.getState();
+      const m = useMarketStore.getState();
       if (b.buildMode) b.setBuildMode(false);
+      else if (m.focusBuy !== null) m.setFocusBuy(null);
       else if (b.selectedStructureId) b.selectStructure(null);
+      else if (m.boardOpen) m.setBoardOpen(false);
       else useQuestUi.getState().set(false);
     }
     if (Phaser.Input.Keyboard.JustDown(this.questKey) && !useMpStore.getState().typing) {
@@ -217,14 +245,17 @@ export class TownController {
     return { tx: Math.floor(wp.x / TILE_SIZE), ty: Math.floor(wp.y / TILE_SIZE) };
   }
 
-  /** Mirrors the server: a placement is valid on my plot, in bounds, not overlapping, affordable. */
+  /** Mirrors the server: valid on a plot YOU own (players may own several, P9),
+   *  in bounds, not overlapping, affordable. */
   private placeable(tx: number, ty: number, defId: string): boolean {
     const world = useWorldStore.getState().world;
-    if (!world || world.me.ownedPlot === null) return false;
+    const me = useFarmStore.getState().characterId;
+    if (!world || !me) return false;
     const def = STRUCTURE_BY_ID[defId];
     if (!def) return false;
-    const plot = world.plots.find((p) => p.index === world.me.ownedPlot);
-    if (!plot) return false;
+    const at = plotAt(tx, ty);
+    const plot = at && world.plots.find((p) => p.index === at.index);
+    if (!plot || plot.ownerId !== me) return false;
     const { w, h } = def.footprint;
     if (tx < plot.x || ty < plot.y || tx + w > plot.x + plot.w || ty + h > plot.y + plot.h) {
       return false;
@@ -255,26 +286,36 @@ export class TownController {
       }
       return;
     }
-    // select an owned structure under the cursor (to upgrade / remove)
+    // not building: select your own structure (upgrade/remove), else offer to buy
+    // a for-sale plot under the cursor (in-world path → buy confirm).
     const world = useWorldStore.getState().world;
     const me = useFarmStore.getState().characterId;
+    const market = useMarketStore.getState();
     const hit = world?.structures.find(
       (s) =>
         tx >= s.x && tx < s.x + s.w && ty >= s.y && ty < s.y + s.h &&
         world.plots.find((p) => p.index === s.plotIndex)?.ownerId === me,
     );
-    build.selectStructure(hit ? hit.id : null);
+    if (hit) {
+      build.selectStructure(hit.id);
+      market.setFocusBuy(null);
+      return;
+    }
+    build.selectStructure(null);
+    const at = plotAt(tx, ty);
+    const plot = at ? world?.plots.find((p) => p.index === at.index) : undefined;
+    market.setFocusBuy(plot && plot.price !== null && plot.ownerId !== me ? plot.index : null);
   }
 
   private placeReason(tx: number, ty: number, defId: string): string {
     const world = useWorldStore.getState().world;
     const def = STRUCTURE_BY_ID[defId];
     if (!world || !def) return "Can't build there";
-    if (world.me.ownedPlot === null) return "Claim a plot first";
+    if (world.me.ownedPlots.length === 0) return "Claim a plot first";
     if (world.me.wood < def.cost.wood || world.me.stone < def.cost.stone || world.me.shards < def.cost.shards) {
       return "Not enough materials";
     }
-    return "Can't build there";
+    return "Build on your own plot";
   }
 
   // ---------------------------------------------------------- per-frame overlay
@@ -426,6 +467,18 @@ export class TownController {
         }
         lbl.setText(mine ? "Your plot" : (p.ownerName ?? "Claimed")).setPosition(cx, py - 1).setVisible(true);
       }
+
+      // in-world FOR SALE sign on any listed plot (click the plot to buy)
+      let sign = this.saleSigns.get(p.index);
+      if (p.price !== null) {
+        if (!sign) {
+          sign = this.makeSaleSign(cx, py);
+          this.saleSigns.set(p.index, sign);
+        }
+        sign.setText(`FOR SALE · ◈${p.price}`).setPosition(cx, py - 13).setVisible(true);
+      } else {
+        sign?.setVisible(false);
+      }
     }
 
     // structures (reconcile against state)
@@ -492,5 +545,20 @@ export class TownController {
       .setOrigin(0.5, 1)
       .setResolution(4)
       .setDepth(1_500_000);
+  }
+
+  private makeSaleSign(x: number, y: number): Phaser.GameObjects.Text {
+    return this.scene.add
+      .text(x, y, "", {
+        fontFamily: "monospace",
+        fontSize: "8px",
+        color: "#0b140f",
+        align: "center",
+        backgroundColor: "#34d399",
+        padding: { x: 3, y: 1 },
+      })
+      .setOrigin(0.5, 1)
+      .setResolution(4)
+      .setDepth(1_500_002);
   }
 }

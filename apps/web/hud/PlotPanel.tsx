@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   CLAIM_COST_SHARDS,
+  marketFee,
   nextStructure,
   PLACEABLE_STRUCTURES,
   STRUCTURE_BY_ID,
@@ -11,6 +14,7 @@ import {
 import { gameBus } from "../game/bus";
 import { useBuildStore } from "../stores/build";
 import { useFarmStore } from "../stores/farm";
+import { useMarketStore } from "../stores/market";
 import { useWorldStore } from "../stores/world";
 
 const card: React.CSSProperties = {
@@ -56,12 +60,22 @@ function btn(enabled: boolean, accent = "#34d399"): React.CSSProperties {
   };
 }
 
+const priceInput: React.CSSProperties = {
+  width: "100%",
+  marginTop: 6,
+  padding: "6px 8px",
+  background: "rgba(11,20,15,0.6)",
+  border: "1px solid #5c4a3d",
+  borderRadius: 6,
+  color: "#f2e8d5",
+  font: "inherit",
+};
+
 /**
- * Contextual build HUD (P7). Modes, in priority order: build palette (place
- * structures) → inspect a selected structure (upgrade/remove) → claim an
- * unclaimed plot → "build on your plot" → other player's nameplate → gather hint.
- * Buttons emit bus events / set the build store; the TownController turns those
- * into server-authoritative /world/act calls.
+ * Contextual plot HUD (P7/P9). Priority: build palette → buy confirm (in-world
+ * for-sale click) → inspect a structure → standing-on-a-plot (claim / your plot
+ * with List·Unlist·Build / others') → gather hint → quick Build entry. Buttons
+ * emit bus events the TownController turns into server-authoritative actions.
  */
 export function PlotPanel() {
   const world = useWorldStore((s) => s.world);
@@ -74,9 +88,16 @@ export function PlotPanel() {
   const setBuildMode = useBuildStore((s) => s.setBuildMode);
   const selectDef = useBuildStore((s) => s.selectDef);
   const selectStructure = useBuildStore((s) => s.selectStructure);
+  const focusBuy = useMarketStore((s) => s.focusBuy);
+  const setFocusBuy = useMarketStore((s) => s.setFocusBuy);
+  const listForm = useMarketStore((s) => s.listForm);
+  const setListForm = useMarketStore((s) => s.setListForm);
+  const [price, setPrice] = useState("100");
 
   if (!world) return null;
-  const ownsPlot = world.me.ownedPlot !== null;
+  const owned = world.me.ownedPlots;
+  const atCap = owned.length >= world.me.maxPlots;
+  const structCount = (idx: number): number => world.structures.filter((s) => s.plotIndex === idx).length;
 
   // --- 1. BUILD MODE: structure palette ---------------------------------------
   if (buildMode) {
@@ -129,7 +150,32 @@ export function PlotPanel() {
     );
   }
 
-  // --- 2. INSPECT a selected (owned) structure --------------------------------
+  // --- 2. BUY CONFIRM (clicked an in-world for-sale plot) ----------------------
+  if (focusBuy !== null) {
+    const plot = world.plots.find((p) => p.index === focusBuy);
+    if (plot && plot.price !== null && plot.ownerId !== me) {
+      const poor = world.me.shards < plot.price;
+      const enabled = !poor && !atCap;
+      return (
+        <div style={card}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>
+            Buy {plot.ownerName ?? "this"} plot — {structCount(plot.index)} bldg
+          </div>
+          <div style={{ opacity: 0.85 }}>
+            Price <span style={{ color: "#a7f3d0" }}>◈{plot.price}</span> · you have ◈{world.me.shards}
+          </div>
+          <button style={btn(enabled)} disabled={!enabled} onClick={() => { gameBus.emit("plotBuy", { index: plot.index }); setFocusBuy(null); }}>
+            {atCap ? "Plot limit reached (8)" : poor ? "Not enough Shards" : `Buy for ◈${plot.price}`}
+          </button>
+          <button style={btn(true, "#c8a06b")} onClick={() => setFocusBuy(null)}>
+            Cancel
+          </button>
+        </div>
+      );
+    }
+  }
+
+  // --- 3. INSPECT a selected (owned) structure --------------------------------
   if (selectedStructureId) {
     const s = world.structures.find((x) => x.id === selectedStructureId);
     const def = s ? STRUCTURE_BY_ID[s.defId] : null;
@@ -183,47 +229,78 @@ export function PlotPanel() {
     }
   }
 
-  // --- 3/4. standing on a plot ------------------------------------------------
+  // --- 4. standing on a plot --------------------------------------------------
   if (standingPlot !== null) {
     const plot = world.plots.find((p) => p.index === standingPlot);
     if (plot) {
       const mine = plot.ownerId !== null && plot.ownerId === me;
       if (plot.ownerId === null) {
-        const owns = ownsPlot;
         const poor = world.me.shards < CLAIM_COST_SHARDS;
-        const enabled = !owns && !poor;
+        const enabled = !atCap && !poor;
         return (
           <div style={card}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>Empty Lot</div>
             <div style={{ opacity: 0.8 }}>
               Claim for <span style={{ color: "#a7f3d0" }}>{CLAIM_COST_SHARDS} Shards</span>
+              <span style={{ opacity: 0.6 }}> · plots {owned.length}/{world.me.maxPlots}</span>
             </div>
             <button style={btn(enabled)} disabled={!enabled} onClick={() => gameBus.emit("plotClaim", { index: plot.index })}>
-              {owns ? "You already own a plot" : poor ? "Not enough Shards" : "Claim this plot"}
+              {atCap ? "Plot limit reached (8)" : poor ? "Not enough Shards" : "Claim this plot"}
             </button>
           </div>
         );
       }
       if (mine) {
-        const count = world.structures.filter((x) => x.plotIndex === plot.index).length;
+        const listed = plot.price !== null;
         return (
           <div style={card}>
-            <div style={{ fontWeight: 700 }}>Your plot</div>
-            <div style={{ opacity: 0.7, fontSize: 12, margin: "2px 0 2px" }}>
-              {count} structure{count === 1 ? "" : "s"} · wood {world.me.wood} · stone {world.me.stone}
+            <div style={{ fontWeight: 700 }}>Your plot · {structCount(plot.index)} bldg</div>
+            <div style={{ opacity: 0.7, fontSize: 12, margin: "2px 0" }}>
+              plots {owned.length}/{world.me.maxPlots} · ◈{world.me.shards}
             </div>
             <button style={btn(true)} onClick={() => setBuildMode(true)}>
               🔨 Build
             </button>
-            <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-              Click a structure to upgrade it. Chop trees / mine rocks for materials.
-            </div>
+            {listed ? (
+              <button style={btn(true, "#c8a06b")} onClick={() => gameBus.emit("plotUnlist", { index: plot.index })}>
+                Listed for ◈{plot.price} · Unlist
+              </button>
+            ) : listForm === plot.index ? (
+              <>
+                <input
+                  style={priceInput}
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="price in Shards"
+                />
+                <button
+                  style={btn(Number(price) > 0)}
+                  disabled={!(Number(price) > 0)}
+                  onClick={() => {
+                    gameBus.emit("plotList", { index: plot.index, price: Math.floor(Number(price)) });
+                    setListForm(null);
+                  }}
+                >
+                  List (fee ◈{marketFee(Math.floor(Number(price) || 0))})
+                </button>
+              </>
+            ) : (
+              <button style={btn(true, "#c8a06b")} onClick={() => setListForm(plot.index)}>
+                List for sale
+              </button>
+            )}
           </div>
         );
       }
       return (
         <div style={{ ...card, textAlign: "center" }}>
           <div style={{ fontWeight: 700 }}>{plot.ownerName ?? "Someone"}&rsquo;s plot</div>
+          {plot.price !== null ? (
+            <button style={btn(!atCap && world.me.shards >= plot.price)} disabled={atCap || world.me.shards < plot.price} onClick={() => gameBus.emit("plotBuy", { index: plot.index })}>
+              Buy for ◈{plot.price}
+            </button>
+          ) : null}
         </div>
       );
     }
@@ -239,7 +316,7 @@ export function PlotPanel() {
   }
 
   // --- 6. own a plot but standing elsewhere → a quick Build entry -------------
-  if (ownsPlot) {
+  if (owned.length > 0) {
     return (
       <div style={{ ...card, width: 170, textAlign: "center", padding: "8px 12px" }}>
         <button style={{ ...btn(true), marginTop: 0 }} onClick={() => setBuildMode(true)}>

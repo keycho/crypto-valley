@@ -199,10 +199,34 @@
   no Data Node; multiplayer/plots/building/quests/farming intact. typecheck/test
   (68)/lint green. Screenshots: docs/screenshots/p8_5-*.png.
 
+## Done — P9: Player-to-player land market (the flip economy)
+
+- **Players can own MULTIPLE plots now** (portfolio flipping), capped at
+  `MAX_PLOTS = 8`. Removed the one-plot-per-owner DB index; `claimPlot`/`buyPlot`
+  enforce the cap; `placeStructure` targets a specific plot by index.
+- Schema (migration `0004`): `listings` (one active per plot via partial-unique) +
+  `treasury` (per-currency fee accrual). Currency carried on the row ("shards" now,
+  token-swap-ready). Content: `MAX_PLOTS`, `MARKET_FEE_BPS=500` (5%), `marketFee`.
+- Server-authoritative, dupe-proof helpers: `listPlot` / `unlistPlot` / `buyPlot`.
+  buyPlot locks the active listing by the `status='active'` predicate so two
+  concurrent buyers can't both win; Shards move buyer→seller (ledgered), the 5% fee
+  accrues to the treasury, ownership transfers (structures STAY), listing closes —
+  one transaction. Tests: list→buy transfer+fee+treasury, structures-stay,
+  can't-buy-own, insufficient funds, cap, unlist, non-owner, concurrent-buy race.
+- Client: a **Land Market board** (the order book — listings with price + structure
+  count + Buy, sortable, your balance + plots N/8, your-plots list with List/Unlist),
+  **in-world FOR SALE signs** (click a listed plot → buy confirm), and List/Unlist on
+  your own plot card. Multi-plot aware throughout.
+- Verified (curl + two browsers): owner lists → board + in-world sign; buyer buys
+  via BOTH paths (Shards −price, seller +95%, treasury +5%, ownership transfers,
+  structures stay, nameplate updates, listing clears); a buyer owns 8 plots, the 9th
+  is rejected; can't buy own / without Shards; unlist works; persists. Screenshots:
+  docs/screenshots/p9-*.png. typecheck/test (78)/lint green.
+
 ## Next session
 
-- [ ] **P9 — land income (tax) + marketplace (buy/sell items)**
+- [ ] **P10 — leaderboard + seasons**
 
-  Passive land income / a tax on harvestable resource-nodes other players use, and
-  a player marketplace to buy/sell items for Shards (order-book `market_listings`
-  is sketched in docs §2). Plot trading + new islands also still pending.
+  A leaderboard (net worth = Shards + land value + structures) and time-boxed
+  seasons with prize pools funded by the market-fee `treasury` (the cut P9 accrues).
+  Land income / tax on resource-nodes + an item marketplace are still pending.
