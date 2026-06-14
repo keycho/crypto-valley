@@ -6,6 +6,7 @@ import type Phaser from "phaser";
 import { createCharacter } from "../game/api";
 import { CharacterCreate } from "../hud/CharacterCreate";
 import { Hud } from "../hud/Hud";
+import { useBuildStore } from "../stores/build";
 import { useFarmStore } from "../stores/farm";
 import { useMpStore } from "../stores/mp";
 import { useWorldStore } from "../stores/world";
@@ -26,6 +27,7 @@ export default function GameMount() {
     w.__cvFarmStore = useFarmStore;
     w.__cvMpStore = useMpStore;
     w.__cvWorldStore = useWorldStore;
+    w.__cvBuildStore = useBuildStore;
     w.__cvEnter = async (name: string, sheet: string): Promise<void> => {
       const id = await createCharacter(name, { sheet });
       useFarmStore.getState().patch({ characterId: id });

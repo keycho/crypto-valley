@@ -120,11 +120,44 @@
   mansion and it **persists after the owner disconnects**; multiplayer/chat/farm
   preserved. Screenshots: docs/screenshots/p6-plot*.png. typecheck/test/lint green.
 
+## Done — P7: Free-form plot building (place structures, build a skyline)
+
+- **Supersedes P6's per-plot tier ladder.** A claimed plot is now a CANVAS: the
+  owner places multiple structures freely, and the hut→skyscraper chain applies
+  PER-STRUCTURE. Removed `upgradePlot`, the `PLOT_TIERS` ladder, and `plots.tier`.
+- Schema (migration `0002_gray_micromacro`): extend `structures` for plots —
+  `plot_id` FK, denormalized `w`/`h` footprint, `farm_id` made nullable,
+  `structures_owner_xor` CHECK (farm XOR plot), `structures_by_plot` index; reuse
+  `level` as the per-structure tier. Drop `plots.tier`.
+- Content `structures.ts`: vertical chain **hut → cabin → house → tower →
+  high-rise → skyscraper** (shared 2×2 footprint — only the sprite grows taller) +
+  standalone **wall / gate / lamp / data-node**; cost/nextTier/footprint/frame per
+  def; `nextStructure`, `structureRefund`, `PLACEABLE_STRUCTURES`.
+- DB helpers (server-authoritative, ledgered): `placeStructure` (locks the owner's
+  plot, validates bounds + non-overlap, consumes wood/stone + Shards),
+  `upgradeStructure` (in place, optimistic-concurrency on `def_id`),
+  `removeStructure` (50% refund). 11 helper tests.
+- Wire: WorldState carries `structures`; WorldAction is a discriminated union
+  (claim | chop | mine | place | upgrade | remove).
+- Client: synthesized 10-frame `structures.png` (hut..skyscraper with a green
+  beacon crown + wall/gate/lamp/cyan data-node) + a `plot_stake` marker;
+  `TownController` renders free-form structures (y-sorted), runs **build mode** (a
+  ghost preview, green/red, click your plot to place; Esc/Done to exit), and
+  click-to-select for upgrade/remove; `PlotPanel` is the build HUD (palette +
+  cost, claim, inspect/upgrade/remove).
+- Verified (curl + two headless browsers): place hut (persists, materials+Shards
+  consumed) → upgrade hut→skyscraper (sprite grows) → remove (exact 50% refund);
+  rejects off-plot/out-of-bounds, overlap, non-placeable def, no-plot, and
+  insufficient-materials; **y-sort correct** (south skyscraper depth 496 > north
+  hut 448); a fresh client sees the skyline and it **persists after the owner
+  disconnects**; multiplayer/chat/island/farming preserved. Screenshots:
+  docs/screenshots/p7-*.png. typecheck/test (54)/lint green.
+
 ## Next session
 
-- [ ] **P7 — plot trading + world expansion (new islands)**
+- [ ] **P8 — quests + land income (tax) + structure tiers**
 
-  Let players sell/transfer plots to each other (server-authoritative + ledgered —
-  the schema already carries `owner_id`, so it slots on cleanly), and expand the
-  world beyond the single town island (additional islands/zones, travel between
-  them, more plots to claim).
+  Quests (the `place_structure`/`gather` objective engine already has events to
+  hook), passive land income / a tax on harvestable resource-nodes other players
+  use, and deeper structure tiers / specialisation. (Plot trading + new islands
+  also still pending from the original roadmap.)

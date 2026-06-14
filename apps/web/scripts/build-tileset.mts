@@ -375,75 +375,147 @@ function gable(p: PNG, cx: number, topY: number, baseW: number, rh: number): voi
   fillRect(p, Math.round(cx - baseW / 2), topY + rh - 1, baseW, 1, c(HP.edge)); // eave
 }
 
-interface BuildingParams {
-  w: number;
-  wallH: number;
-  roofH: number;
-  floors: number;
-  cols: number;
-  glow?: boolean;
-}
-const TIER_PARAMS: Record<number, BuildingParams> = {
-  1: { w: 38, wallH: 24, roofH: 12, floors: 1, cols: 1 },
-  2: { w: 50, wallH: 30, roofH: 16, floors: 1, cols: 2 },
-  3: { w: 62, wallH: 40, roofH: 20, floors: 1, cols: 3 },
-  4: { w: 76, wallH: 54, roofH: 22, floors: 2, cols: 3 },
-  5: { w: 88, wallH: 70, roofH: 28, floors: 2, cols: 4, glow: true },
-};
+// ---- P7: free-form structures (vertical chain + standalones) ----------------
+// Extra palette beyond HP: browner wood walls + cooler glass/data accents.
+const ST = {
+  woodWall: [156, 107, 74, 255] as const, // #9C6B4A (art-bible "wood/structures")
+  woodWallSh: [120, 82, 56, 255] as const,
+  cyan: [34, 211, 238, 255] as const, // signal cyan (data node)
+  cyanHi: [165, 243, 252, 255] as const,
+} as const;
 
-function drawBuilding(p: PNG, cx: number, baseY: number, t: BuildingParams): void {
+interface ChainParams {
+  w: number;
+  stories: number;
+  storyH: number;
+  roof: "peak" | "flat";
+  wall: RGBA;
+  wallSh: RGBA;
+  crown: "none" | "chimney" | "green" | "beacon";
+}
+/** Frames 0..5 of the chain: hut → cabin → house → tower → high-rise → skyscraper.
+ *  Footprint is a constant 2×2 (~32px); only HEIGHT grows — a player skyline. */
+const CHAIN: ChainParams[] = [
+  { w: 22, stories: 1, storyH: 18, roof: "peak", wall: ST.woodWall, wallSh: ST.woodWallSh, crown: "none" },
+  { w: 26, stories: 1, storyH: 24, roof: "peak", wall: ST.woodWall, wallSh: ST.woodWallSh, crown: "chimney" },
+  { w: 30, stories: 2, storyH: 18, roof: "peak", wall: HP.wall, wallSh: HP.wallSh, crown: "chimney" },
+  { w: 26, stories: 4, storyH: 16, roof: "flat", wall: HP.stone, wallSh: HP.stoneSh, crown: "none" },
+  { w: 30, stories: 6, storyH: 14, roof: "flat", wall: HP.stone, wallSh: HP.stoneSh, crown: "green" },
+  { w: 32, stories: 8, storyH: 12, roof: "flat", wall: HP.stone, wallSh: HP.stoneSh, crown: "beacon" },
+];
+
+function drawChain(p: PNG, cx: number, baseY: number, t: ChainParams): void {
+  const bodyH = t.stories * t.storyH;
   const x0 = Math.round(cx - t.w / 2);
-  const wallTop = baseY - t.wallH;
-  // body + a shaded right strip for a little form
-  fillRect(p, x0, wallTop, t.w, t.wallH, c(HP.wall));
-  fillRect(p, x0 + Math.round(t.w * 0.68), wallTop, Math.round(t.w * 0.32), t.wallH, c(HP.wallSh));
-  outlineRect(p, x0, wallTop, t.w, t.wallH, HP.edge);
-  if (t.floors === 2) {
-    const midY = wallTop + Math.round(t.wallH / 2);
-    fillRect(p, x0, midY, t.w, 2, c(HP.wood));
-    fillRect(p, x0, midY, t.w, 1, c(HP.edge));
-  }
-  // door, centred at the base
-  const dw = 10;
-  const dh = Math.min(16, t.wallH - (t.floors === 2 ? Math.round(t.wallH / 2) : 6));
+  const top = baseY - bodyH;
+  fillRect(p, x0, top, t.w, bodyH, c(t.wall));
+  fillRect(p, x0 + Math.round(t.w * 0.7), top, Math.round(t.w * 0.3), bodyH, c(t.wallSh)); // shade
+  outlineRect(p, x0, top, t.w, bodyH, HP.edge);
+
+  const cols = 2;
+  const winW = Math.max(4, Math.round(t.w / (cols * 2.6)));
+  const winH = Math.min(7, t.storyH - 5);
+  const dw = Math.min(8, t.w - 8);
   const dx = Math.round(cx - dw / 2);
-  fillRect(p, dx, baseY - dh, dw, dh, c(HP.wood));
-  outlineRect(p, dx, baseY - dh, dw, dh, HP.edge);
-  setPx(p, dx + dw - 3, baseY - Math.round(dh / 2), c(HP.winLit)); // knob
-  // windows: a cols×floors grid, skipping the door column on the ground floor
-  const winW = 8;
-  const winH = 9;
-  for (let f = 0; f < t.floors; f++) {
-    const floorTop = wallTop + (t.floors === 2 ? f * Math.round(t.wallH / 2) : 0);
-    const wy = floorTop + 5;
-    for (let col = 0; col < t.cols; col++) {
-      const wx = Math.round(x0 + ((col + 1) * t.w) / (t.cols + 1) - winW / 2);
-      const groundFloor = f === t.floors - 1;
-      if (groundFloor && wx < dx + dw && wx + winW > dx) continue; // don't sit on the door
-      fillRect(p, wx, wy, winW, winH, c(HP.win));
-      fillRect(p, wx + 1, wy + 1, winW - 2, winH - 3, c(HP.winLit));
+  const dh = Math.min(t.storyH - 2, 12);
+  for (let s = 0; s < t.stories; s++) {
+    const storyTop = baseY - (s + 1) * t.storyH;
+    if (s > 0) fillRect(p, x0, baseY - s * t.storyH, t.w, 1, c(HP.edge)); // floor line
+    for (let col = 0; col < cols; col++) {
+      const wx = Math.round(x0 + ((col + 1) * t.w) / (cols + 1) - winW / 2);
+      const wy = storyTop + Math.round((t.storyH - winH) / 2);
+      if (s === 0 && wx < dx + dw && wx + winW > dx) continue; // door takes ground-centre
+      const lit = (s + col) % 3 === 0; // ~⅓ lit, rest dead (the world mostly sleeps)
+      fillRect(p, wx, wy, winW, winH, c(lit ? HP.winLit : HP.win));
       outlineRect(p, wx, wy, winW, winH, HP.edge);
-      fillRect(p, wx, wy + Math.round(winH / 2), winW, 1, c(HP.edge)); // muntin
     }
   }
-  // roof
-  gable(p, cx, wallTop - t.roofH, t.w + 8, t.roofH);
-  // chimney (house+)
-  if (t.wallH >= 38) {
-    const chX = x0 + Math.round(t.w * 0.74);
-    fillRect(p, chX, wallTop - t.roofH - 4, 5, t.roofH, c(HP.wood));
-    outlineRect(p, chX, wallTop - t.roofH - 4, 5, t.roofH, HP.edge);
+  // door
+  fillRect(p, dx, baseY - dh, dw, dh, c(HP.wood));
+  outlineRect(p, dx, baseY - dh, dw, dh, HP.edge);
+  setPx(p, dx + dw - 2, baseY - Math.round(dh / 2), c(HP.winLit));
+
+  if (t.roof === "peak") {
+    gable(p, cx, top - Math.round(t.w * 0.5), t.w + 8, Math.round(t.w * 0.5));
+  } else {
+    fillRect(p, x0 - 2, top - 3, t.w + 4, 3, c(t.wallSh)); // parapet
+    outlineRect(p, x0 - 2, top - 3, t.w + 4, 3, HP.edge);
   }
-  // mansion: a finial with the town's scarce cold glow (the dead chain's mark)
-  if (t.glow) {
-    const ridgeY = wallTop - t.roofH;
-    fillRect(p, cx - 1, ridgeY - 8, 2, 8, c(HP.wood));
-    fillRect(p, cx - 2, ridgeY - 11, 4, 4, c(HP.glow));
-    setPx(p, cx - 1, ridgeY - 10, c(HP.glowHi));
+
+  if (t.crown === "chimney") {
+    const chX = x0 + Math.round(t.w * 0.7);
+    fillRect(p, chX, top - 6, 5, 8, c(HP.wood));
+    outlineRect(p, chX, top - 6, 5, 8, HP.edge);
+  } else if (t.crown === "green") {
+    fillRect(p, cx - 3, top - 5, 6, 4, c(HP.glow));
+    setPx(p, cx - 2, top - 4, c(HP.glowHi));
+  } else if (t.crown === "beacon") {
+    // antenna mast + terminal-green beacon — the dead chain's one living light
+    const mastTop = top - 14;
+    fillRect(p, cx - 1, mastTop, 2, 14, c(HP.edge));
+    fillRect(p, cx - 4, mastTop + 5, 9, 1, c(HP.edge)); // strut
+    fillRect(p, cx - 3, mastTop - 3, 6, 4, c(HP.glow));
+    fillRect(p, cx - 1, mastTop - 5, 2, 3, c(HP.glowHi));
   }
 }
 
-/** Tier 0: an empty lot — a surveyor's stake + a small "for claim" sign. */
+// ---- standalone props (frames 6..9) ----------------------------------------
+function drawWallSeg(p: PNG, cx: number, baseY: number): void {
+  const w = 14;
+  const h = 10;
+  const x0 = cx - w / 2;
+  const top = baseY - h;
+  fillRect(p, x0, top, w, h, c(HP.stone));
+  fillRect(p, x0, top, w, 2, c(HP.stoneHi));
+  fillRect(p, x0, baseY - 2, w, 2, c(HP.stoneSh));
+  outlineRect(p, x0, top, w, h, HP.edge);
+  fillRect(p, x0, top + 5, w, 1, c(HP.stoneSh)); // mortar
+  for (const mx of [x0, x0 + 5, x0 + 10]) {
+    fillRect(p, mx, top - 3, 4, 3, c(HP.stone));
+    outlineRect(p, mx, top - 3, 4, 3, HP.edge);
+  }
+}
+function drawGate(p: PNG, cx: number, baseY: number): void {
+  const top = baseY - 20;
+  for (const px of [cx - 7, cx + 4]) {
+    fillRect(p, px, top, 3, 20, c(HP.wood));
+    outlineRect(p, px, top, 3, 20, HP.edge);
+  }
+  fillRect(p, cx - 8, top, 16, 4, c(HP.wood));
+  outlineRect(p, cx - 8, top, 16, 4, HP.edge);
+  setPx(p, cx, top + 1, c(HP.winLit)); // keystone glint
+}
+function drawLamp(p: PNG, cx: number, baseY: number): void {
+  fillRect(p, cx - 1, baseY - 22, 2, 22, c(HP.edge)); // post
+  fillRect(p, cx - 3, baseY - 2, 6, 2, c(HP.stoneSh)); // base
+  fillRect(p, cx - 3, baseY - 26, 6, 6, c(HP.wood)); // head
+  outlineRect(p, cx - 3, baseY - 26, 6, 6, HP.edge);
+  fillRect(p, cx - 2, baseY - 25, 4, 4, c(HP.winLit)); // bulb
+  for (const [gx, gy] of [
+    [cx - 4, baseY - 23],
+    [cx + 3, baseY - 23],
+    [cx, baseY - 28],
+  ] as Array<[number, number]>) {
+    setPx(p, gx, gy, [255, 183, 105, 90]); // faint warm halo
+  }
+}
+function drawDataNode(p: PNG, cx: number, baseY: number): void {
+  fillRect(p, cx - 10, baseY - 6, 20, 6, c(HP.stone));
+  fillRect(p, cx - 10, baseY - 6, 20, 2, c(HP.stoneHi));
+  outlineRect(p, cx - 10, baseY - 6, 20, 6, HP.edge);
+  const shard = (sx: number, h: number, w: number): void => {
+    for (let i = 0; i < h; i++) {
+      const ww = Math.max(1, Math.round(w * (1 - i / h)));
+      fillRect(p, sx - Math.round(ww / 2), baseY - 6 - i, ww, 1, c(i < h * 0.4 ? ST.cyanHi : ST.cyan));
+    }
+    setPx(p, sx, baseY - 6, c(HP.edge));
+  };
+  shard(cx - 6, 12, 4);
+  shard(cx + 6, 14, 5);
+  shard(cx, 18, 6);
+}
+
+/** Unclaimed-plot marker — a surveyor's stake + a small "for claim" sign. */
 function drawStake(p: PNG, cx: number, baseY: number): void {
   fillRect(p, cx - 1, baseY - 18, 3, 18, c(HP.wood));
   outlineRect(p, cx - 1, baseY - 18, 3, 18, HP.edge);
@@ -453,21 +525,34 @@ function drawStake(p: PNG, cx: number, baseY: number): void {
   fillRect(p, cx - 6, baseY - 23, 10, 1, c(HP.wood));
 }
 
-function writePlotsSheet(): void {
-  const CW = 96;
-  const CH = 128;
-  const sheet = new PNG({ width: CW * 6, height: CH });
+/** 10 frames, 64×112, bottom-anchored: 6 chain tiers + wall/gate/lamp/data-node.
+ *  The client places by frame = StructureDef.frame, origin (0.5, 1). */
+function writeStructuresSheet(): void {
+  const CW = 64;
+  const CH = 112;
+  const standalones = [drawWallSeg, drawGate, drawLamp, drawDataNode];
+  const sheet = new PNG({ width: CW * 10, height: CH });
   sheet.data.fill(0);
-  for (let tier = 0; tier < 6; tier++) {
+  for (let i = 0; i < 10; i++) {
     const f = new PNG({ width: CW, height: CH });
     f.data.fill(0);
-    if (tier === 0) drawStake(f, CW / 2, CH - 2);
-    else drawBuilding(f, CW / 2, CH - 2, TIER_PARAMS[tier]);
-    blit(sheet, f, tier * CW, 0);
+    if (i < 6) drawChain(f, CW / 2, CH - 2, CHAIN[i]);
+    else standalones[i - 6](f, CW / 2, CH - 2);
+    blit(sheet, f, i * CW, 0);
   }
   const spriteDir = join(here, "../public/assets/sprites");
   mkdirSync(spriteDir, { recursive: true });
-  writeFileSync(join(spriteDir, "plots.png"), PNG.sync.write(sheet));
+  writeFileSync(join(spriteDir, "structures.png"), PNG.sync.write(sheet));
+}
+
+/** A single 32×48 stake for unclaimed plots. */
+function writeStakeSprite(): void {
+  const f = new PNG({ width: 32, height: 48 });
+  f.data.fill(0);
+  drawStake(f, 16, 46);
+  const spriteDir = join(here, "../public/assets/sprites");
+  mkdirSync(spriteDir, { recursive: true });
+  writeFileSync(join(spriteDir, "plot_stake.png"), PNG.sync.write(f));
 }
 
 // gathering: tree | stump | rock | rubble, 32x48 each, anchored bottom-centre.
@@ -617,9 +702,10 @@ writeFileSync(join(OUT_DIR, "town_tiles.manifest.json"), JSON.stringify(manifest
 
 writeTerminalSheet();
 writeCropSheet();
-writePlotsSheet();
+writeStructuresSheet();
+writeStakeSprite();
 writeGatherSheet();
 
 console.log(`atlas ${COLS * TILE}x${ROWS * TILE} (${COLS}x${ROWS} tiles)`);
 console.log(`singles: ${singleSources.length}, objects: ${Object.keys(objectEntries).length}`);
-console.log(`wrote sprites/{terminal,crop_bitberry,plots,gather}.png`);
+console.log(`wrote sprites/{terminal,crop_bitberry,structures,plot_stake,gather}.png`);

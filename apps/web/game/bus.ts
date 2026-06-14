@@ -14,8 +14,10 @@ export type GameEvents = {
   chatSend: { msg: string };
   /** HUD "Claim" button -> TownController (server-authoritative claim). */
   plotClaim: { index: number };
-  /** HUD "Upgrade" button -> TownController (server-authoritative upgrade). */
-  plotUpgrade: { index: number };
+  /** HUD "Upgrade" button -> TownController (server-authoritative structure upgrade). */
+  structureUpgrade: { id: string };
+  /** HUD "Remove" button -> TownController (server-authoritative removal + refund). */
+  structureRemove: { id: string };
 };
 
 export const gameBus = mitt<GameEvents>();

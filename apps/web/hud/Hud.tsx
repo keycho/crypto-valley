@@ -57,7 +57,7 @@ export function Hud() {
             textAlign: "right",
           }}
         >
-          WASD move · Space use/claim/chop · 1–3 tool · I bag · Enter chat
+          WASD move · Space use/claim/chop · 🔨 Build (click to place, Esc exit) · I bag · Enter chat
         </div>
         <PlotPanel />
         <Inventory />
