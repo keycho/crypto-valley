@@ -62,10 +62,33 @@ export const MeViewSchema = z.object({
 });
 export type MeView = z.infer<typeof MeViewSchema>;
 
+/** A quest as the client renders it (progress + reward), computed server-side. */
+export const QuestObjectiveViewSchema = z.object({
+  label: z.string(),
+  progress: z.number().int(),
+  target: z.number().int(),
+});
+export const QuestViewSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  status: z.enum(["active", "complete", "claimed"]),
+  repeatable: z.boolean(),
+  order: z.number().int().optional(),
+  objectives: z.array(QuestObjectiveViewSchema),
+  reward: z.object({
+    shards: z.number().int(),
+    items: z.array(z.object({ item: z.string(), qty: z.number().int() })),
+    flag: z.string().optional(),
+  }),
+});
+export type QuestView = z.infer<typeof QuestViewSchema>;
+
 export const WorldStateSchema = z.object({
   plots: z.array(PlotViewSchema),
   structures: z.array(StructureViewSchema),
   nodes: z.array(NodeViewSchema),
+  quests: z.array(QuestViewSchema),
   me: MeViewSchema,
 });
 export type WorldState = z.infer<typeof WorldStateSchema>;
@@ -118,6 +141,12 @@ export const RemoveActionSchema = z.object({
   characterId: uuid,
   structureId: uuid,
 });
+/** Claim a completed quest's reward (Shards + items, ledgered, once). */
+export const ClaimQuestActionSchema = z.object({
+  action: z.literal("claimQuest"),
+  characterId: uuid,
+  questId: z.string().max(40),
+});
 
 export const WorldActionSchema = z.discriminatedUnion("action", [
   ClaimActionSchema,
@@ -126,6 +155,7 @@ export const WorldActionSchema = z.discriminatedUnion("action", [
   PlaceActionSchema,
   UpgradeActionSchema,
   RemoveActionSchema,
+  ClaimQuestActionSchema,
 ]);
 export type WorldAction = z.infer<typeof WorldActionSchema>;
 

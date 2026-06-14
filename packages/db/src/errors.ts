@@ -14,7 +14,11 @@ export type ErrorCode =
   | "OVERLAP"
   | "STRUCTURE_NOT_FOUND"
   | "STRUCTURE_MAX_TIER"
-  | "STRUCTURE_STALE";
+  | "STRUCTURE_STALE"
+  // quests (P8)
+  | "QUEST_NOT_FOUND"
+  | "QUEST_INCOMPLETE"
+  | "QUEST_ALREADY_CLAIMED";
 
 /** An error carrying a typed `code` so callers can branch without string matching. */
 export class TypedError extends Error {

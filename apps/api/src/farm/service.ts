@@ -1,14 +1,16 @@
 import {
   accounts,
+  advanceQuests,
   characters,
   crops,
+  ensureQuests,
   farms,
   farmTiles,
   inventorySlots,
   itemDefs,
   moveItems,
 } from "@crypto-valley/db";
-import { CROPS, inFarmPlot, ITEMS, SEED_TO_CROP } from "@crypto-valley/content";
+import { CROPS, gameDay, inFarmPlot, ITEMS, SEED_TO_CROP } from "@crypto-valley/content";
 import type { FarmState } from "@crypto-valley/shared";
 import {
   ACTION_ENERGY,
@@ -163,6 +165,8 @@ export async function createCharacter(
       { characterId, itemId: "pickaxe_t1", qty: 1 },
       { characterId, itemId: "seed_bitberry", qty: 20 },
     ]);
+    // P8: new players start with the onboarding quest + today's dailies assigned.
+    await ensureQuests(tx, characterId, gameDay(Date.now(), CLOCK_FACTOR));
     return { characterId };
   });
 }
@@ -318,6 +322,8 @@ export async function act(
         .update(characters)
         .set({ skills: { ...skills, farming: (skills.farming ?? 0) + def!.xp } })
         .where(eq(characters.id, characterId));
+      // P8: harvesting a crop advances harvest quests (the daily) in this tx.
+      await advanceQuests(tx, characterId, { type: "harvest", item: def!.produce, qty: 1 }, gameDay(now, CLOCK_FACTOR));
     }
 
     // spend energy (skills update above already wrote; do energy in all cases)

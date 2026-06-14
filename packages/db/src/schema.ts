@@ -219,6 +219,33 @@ export const worldNodes = pgTable("world_nodes", {
   harvestedAt: timestamp("harvested_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ============ QUESTS ============
+
+/**
+ * Per-character quest state (P8). Rows are created server-side: the onboarding
+ * chain's first quest + the daily quests are auto-assigned, and completing+
+ * claiming a story quest assigns its `unlocks`. `objectives` maps an objective
+ * INDEX ("0","1") to its numeric progress; `status` walks active → complete →
+ * claimed. Rewards are granted ONLY on claim, via moveShards/moveItems (ledgered)
+ * in the same transaction. `day` stamps the game-day a daily was (re)assigned so
+ * dailies reset once per game-day; null for story quests. Quest defs live in
+ * packages/content.
+ */
+export const questProgress = pgTable(
+  "quest_progress",
+  {
+    characterId: uuid("character_id")
+      .notNull()
+      .references(() => characters.id),
+    questId: text("quest_id").notNull(),
+    status: text("status").notNull().default("active"), // active | complete | claimed
+    objectives: jsonb("objectives").notNull().default({}),
+    day: integer("day"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.characterId, t.questId] })],
+);
+
 // ============ ECONOMY ============
 
 export const ledger = pgTable(

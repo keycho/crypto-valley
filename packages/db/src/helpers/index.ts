@@ -8,3 +8,4 @@ export {
   type StructureRow,
   type StructureCost,
 } from "./structures";
+export { ensureQuests, advanceQuests, claimQuest } from "./quests";

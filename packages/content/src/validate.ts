@@ -2,6 +2,7 @@ import { argv } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { ITEMS, type ItemDef } from "./items";
+import { QUEST_BY_ID, QUESTS, type QuestDef } from "./quests";
 
 /** Meta keys whose string values must reference another item id in the catalog. */
 const META_ITEM_REFS = ["crop", "seed", "smeltedFrom"] as const;
@@ -28,14 +29,43 @@ export function validateCatalog(items: readonly ItemDef[]): string[] {
   return errors;
 }
 
+/** Every quest reward/objective item must be a real item; unlocks must resolve. */
+export function validateQuests(quests: readonly QuestDef[], items: readonly ItemDef[]): string[] {
+  const errors: string[] = [];
+  const itemIds = new Set(items.map((i) => i.id));
+  const ids = new Set<string>();
+
+  for (const q of quests) {
+    if (ids.has(q.id)) errors.push(`duplicate quest id: ${q.id}`);
+    ids.add(q.id);
+    if (q.objectives.length === 0) errors.push(`quest ${q.id}: no objectives`);
+    for (const o of q.objectives) {
+      if (o.target <= 0) errors.push(`quest ${q.id}: objective target must be > 0`);
+      if ((o.type === "gather") && !o.item) errors.push(`quest ${q.id}: gather objective needs an item`);
+      if (o.item && !itemIds.has(o.item)) {
+        errors.push(`quest ${q.id}: objective references unknown item "${o.item}"`);
+      }
+    }
+    if (q.reward.shards < 0) errors.push(`quest ${q.id}: negative shard reward`);
+    for (const r of q.reward.items ?? []) {
+      if (!itemIds.has(r.item)) errors.push(`quest ${q.id}: reward references unknown item "${r.item}"`);
+      if (r.qty <= 0) errors.push(`quest ${q.id}: reward qty must be > 0`);
+    }
+    if (q.unlocks && !QUEST_BY_ID[q.unlocks]) {
+      errors.push(`quest ${q.id}: unlocks unknown quest "${q.unlocks}"`);
+    }
+  }
+  return errors;
+}
+
 // CI-runnable entry point: `tsx src/validate.ts`.
 const isMain = import.meta.url === pathToFileURL(argv[1] ?? "").href;
 if (isMain) {
-  const errors = validateCatalog(ITEMS);
+  const errors = [...validateCatalog(ITEMS), ...validateQuests(QUESTS, ITEMS)];
   if (errors.length > 0) {
-    console.error("content catalog is invalid:");
+    console.error("content is invalid:");
     for (const e of errors) console.error(`  - ${e}`);
     process.exit(1);
   }
-  console.log(`content catalog OK (${ITEMS.length} items)`);
+  console.log(`content OK (${ITEMS.length} items, ${QUESTS.length} quests)`);
 }

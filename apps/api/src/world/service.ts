@@ -1,10 +1,14 @@
 import {
+  advanceQuests,
   characters,
   claimPlot,
+  claimQuest,
+  ensureQuests,
   inventorySlots,
   moveItems,
   placeStructure,
   plots,
+  questProgress,
   removeStructure,
   structures,
   type Tx,
@@ -17,16 +21,18 @@ import {
   GATHER_NODE_BY_ID,
   GATHER_NODES,
   GATHER_RESPAWN_GAME_MS,
+  gameDay,
   nextStructure,
   nodeAvailable,
   PLOT_H,
   PLOT_W,
   PLOTS,
   plotAt,
+  QUEST_BY_ID,
   STRUCTURE_BY_ID,
   structureRefund,
 } from "@crypto-valley/content";
-import type { WorldAction, WorldState } from "@crypto-valley/shared";
+import type { QuestView, WorldAction, WorldState } from "@crypto-valley/shared";
 import { ENERGY_MAX, regenEnergy } from "@crypto-valley/sim";
 import { count, eq } from "drizzle-orm";
 
@@ -63,6 +69,45 @@ async function sumItems(characterId: string): Promise<Map<string, number>> {
   return m;
 }
 
+/** Current game-day index (drives daily-quest resets). */
+const dayNow = (now: number): number => gameDay(now, CLOCK_FACTOR);
+
+/** Append a "✓ Quest title" suffix when an action just completed quests. */
+const questSuffix = (completed: string[]): string =>
+  completed.length ? ` · ✓ ${completed.map((id) => QUEST_BY_ID[id]?.title ?? id).join(", ")}` : "";
+
+/** Map persisted quest rows + content defs into client QuestViews. */
+function buildQuestViews(
+  rows: { questId: string; status: string; objectives: unknown }[],
+  shards: number,
+): QuestView[] {
+  const views: QuestView[] = [];
+  for (const row of rows) {
+    const def = QUEST_BY_ID[row.questId];
+    if (!def) continue;
+    const prog = (row.objectives ?? {}) as Record<string, number>;
+    views.push({
+      id: def.id,
+      title: def.title,
+      description: def.description,
+      status: row.status as QuestView["status"],
+      repeatable: !!def.repeatable,
+      order: def.order,
+      objectives: def.objectives.map((o, i) => ({
+        label: o.label,
+        progress: o.type === "reach_shards" ? Math.min(shards, o.target) : (prog[String(i)] ?? 0),
+        target: o.target,
+      })),
+      reward: { shards: def.reward.shards, items: def.reward.items ?? [], flag: def.reward.flag },
+    });
+  }
+  return views.sort((a, b) => {
+    const sa = a.repeatable ? 1 : 0;
+    const sb = b.repeatable ? 1 : 0;
+    return sa !== sb ? sa - sb : (a.order ?? 99) - (b.order ?? 99);
+  });
+}
+
 // ----------------------------------------------------------------- read state
 export async function getWorldState(characterId: string, now: number): Promise<WorldState> {
   await ensurePlots();
@@ -70,6 +115,17 @@ export async function getWorldState(characterId: string, now: number): Promise<W
 
   const [char] = await database.select().from(characters).where(eq(characters.id, characterId));
   if (!char) throw new WorldError("CHARACTER_NOT_FOUND");
+
+  // Assign the onboarding quest + reset stale dailies before reading them.
+  await database.transaction((tx) => ensureQuests(tx, characterId, dayNow(now)));
+  const questRows = await database
+    .select({
+      questId: questProgress.questId,
+      status: questProgress.status,
+      objectives: questProgress.objectives,
+    })
+    .from(questProgress)
+    .where(eq(questProgress.characterId, characterId));
 
   const plotRows = await database
     .select({
@@ -126,6 +182,7 @@ export async function getWorldState(characterId: string, now: number): Promise<W
       y: n.y,
       available: nodeAvailable(harvestedAt.get(n.id) ?? null, now, NODE_RESPAWN_MS),
     })),
+    quests: buildQuestViews(questRows, char.shards),
     me: {
       shards: char.shards,
       energy: regenEnergy(char.energy, char.energyUpdated.getTime(), now),
@@ -140,6 +197,7 @@ export async function getWorldState(characterId: string, now: number): Promise<W
 // ----------------------------------------------------------------- act
 export async function worldAct(input: WorldAction, now: number): Promise<{ toast?: string }> {
   const characterId = input.characterId;
+  const day = dayNow(now);
   await ensurePlots(); // don't depend on a prior /world/state call
 
   const toast = await db().transaction(async (tx): Promise<string | undefined> => {
@@ -158,12 +216,13 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
           throw new WorldError("OUT_OF_RANGE");
         }
         await claimPlot(tx, characterId, input.plotIndex, CLAIM_COST_SHARDS, new Date(now));
-        return `Claimed plot · −${CLAIM_COST_SHARDS} Shards`;
+        const done = await advanceQuests(tx, characterId, { type: "claim_plot" }, day);
+        return `Claimed plot · −${CLAIM_COST_SHARDS} Shards${questSuffix(done)}`;
       }
 
       case "chop":
       case "mine":
-        return gather(tx, char, input, now);
+        return gather(tx, char, input, now, day);
 
       case "place": {
         const def = STRUCTURE_BY_ID[input.defId];
@@ -178,7 +237,8 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
           tier: def.tier,
           cost: def.cost,
         });
-        return `Placed ${def.name}`;
+        const done = await advanceQuests(tx, characterId, { type: "place_structure", defId: def.id }, day);
+        return `Placed ${def.name}${questSuffix(done)}`;
       }
 
       case "upgrade": {
@@ -195,7 +255,8 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
           toTier: next.tier,
           cost: next.cost,
         });
-        return `Upgraded to ${next.name}`;
+        const done = await advanceQuests(tx, characterId, { type: "upgrade_structure", tier: next.tier }, day);
+        return `Upgraded to ${next.name}${questSuffix(done)}`;
       }
 
       case "remove": {
@@ -212,6 +273,12 @@ export async function worldAct(input: WorldAction, now: number): Promise<{ toast
         });
         return `Removed ${def.name} (refund)`;
       }
+
+      case "claimQuest": {
+        const reward = await claimQuest(tx, characterId, input.questId);
+        const items = (reward.items ?? []).map((r) => `+${r.qty} ${r.item}`).join(" ");
+        return `Reward: +${reward.shards} Shards${items ? ` ${items}` : ""}`.trim();
+      }
     }
   });
 
@@ -224,6 +291,7 @@ async function gather(
   char: typeof characters.$inferSelect,
   input: Extract<WorldAction, { action: "chop" | "mine" }>,
   now: number,
+  day: number,
 ): Promise<string> {
   const wantKind = input.action === "chop" ? "tree" : "rock";
   const node = GATHER_NODE_BY_ID[input.nodeId];
@@ -260,5 +328,7 @@ async function gather(
     })
     .where(eq(characters.id, char.id));
 
-  return node.kind === "tree" ? `+${cfg.qty} Wood` : `+${cfg.qty} Stone`;
+  const done = await advanceQuests(tx, char.id, { type: "gather", item: cfg.item, qty: cfg.qty }, day);
+  const base = node.kind === "tree" ? `+${cfg.qty} Wood` : `+${cfg.qty} Stone`;
+  return base + questSuffix(done);
 }
