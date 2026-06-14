@@ -18,6 +18,8 @@ export type GameEvents = {
   structureUpgrade: { id: string };
   /** HUD "Remove" button -> TownController (server-authoritative removal + refund). */
   structureRemove: { id: string };
+  /** HUD Quest-Log "Claim" button -> TownController (server-authoritative reward). */
+  questClaim: { id: string };
 };
 
 export const gameBus = mitt<GameEvents>();

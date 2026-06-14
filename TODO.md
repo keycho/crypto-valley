@@ -153,11 +153,39 @@
   disconnects**; multiplayer/chat/island/farming preserved. Screenshots:
   docs/screenshots/p7-*.png. typecheck/test (54)/lint green.
 
+## Done — P8: Quests (new-player onboarding + earn loop)
+
+- Event-sourced, server-authoritative quest engine. Actions emit a typed
+  `QuestEvent`; active quests advance IN the action's transaction (no polling
+  race); rewards (Shards + items) are granted via the ledgered moveShards/
+  moveItems ONLY on claim.
+- Schema (migration `0003`): `quest_progress` (character_id, quest_id, status
+  active→complete→claimed, objectives jsonb, `day` for daily resets).
+- Content `quests.ts`: onboarding chain **Stake Your Claim → Timber → First
+  Foundations → Reach for the Sky → Rising Skyline** (each unlocks the next) +
+  repeatable dailies (wood / harvest / build). Pure engine core
+  (`objectiveProgress`/`applyEvent`/`questComplete`/`gameDay`); `validate.ts`
+  checks every reward/objective item + unlock resolves. 7 content tests.
+- DB helpers: `ensureQuests` (auto-assign Q1 + reset stale dailies per game-day),
+  `advanceQuests` (match an event against active quests), `claimQuest` (locked +
+  status-checked; grants once, unlocks next). 7 helper tests incl. no-double-claim
+  + concurrent-claim race.
+- Wire: WorldState carries `quests` (per-objective progress views); WorldAction
+  gains `claimQuest`. Hooked into world claim/chop/mine/place/upgrade (with a
+  "✓ Quest" toast) and farm createCharacter (assign) + harvest (advance).
+- Client: a `QuestLog` panel (toggle button / `Q`) with per-objective progress
+  bars + Claim buttons, an always-on `QuestTracker`, and a claimable dot on the
+  Quests button — styling kept separate from logic for the coming reskin.
+- Verified (curl + browser): a new character auto-gets Q1 + dailies; claiming a
+  plot completes Q1; claiming the reward grants 50 Shards + 20 wood (ledgered) and
+  unlocks Q2; chop advances Q2 + the wood daily live; can't claim an incomplete
+  quest, can't double-claim; dailies reset on the game-day; progress persists.
+  Screenshots: docs/screenshots/p8-quest-*.png. typecheck/test (68)/lint green.
+
 ## Next session
 
-- [ ] **P8 — quests + land income (tax) + structure tiers**
+- [ ] **P9 — land income (tax) + marketplace (buy/sell items)**
 
-  Quests (the `place_structure`/`gather` objective engine already has events to
-  hook), passive land income / a tax on harvestable resource-nodes other players
-  use, and deeper structure tiers / specialisation. (Plot trading + new islands
-  also still pending from the original roadmap.)
+  Passive land income / a tax on harvestable resource-nodes other players use, and
+  a player marketplace to buy/sell items for Shards (order-book `market_listings`
+  is sketched in docs §2). Plot trading + new islands also still pending.

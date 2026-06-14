@@ -9,8 +9,51 @@ import { HudBridge } from "./HudBridge";
 import { Inventory } from "./Inventory";
 import { Online } from "./Online";
 import { PlotPanel } from "./PlotPanel";
+import { QuestLog } from "./QuestLog";
+import { QuestTracker } from "./QuestTracker";
 import { Toast } from "./Toast";
 import { useHotbarKeys } from "./useHotbarKeys";
+import { useQuestUi } from "../stores/questUi";
+import { useWorldStore } from "../stores/world";
+
+/** Top-right button that opens the Quest Log; dot when a reward is claimable. */
+function QuestButton() {
+  const toggle = useQuestUi((s) => s.toggle);
+  const claimable = useWorldStore((s) => (s.world?.quests ?? []).some((q) => q.status === "complete"));
+  return (
+    <button
+      onClick={toggle}
+      style={{
+        pointerEvents: "auto",
+        position: "relative",
+        padding: "4px 10px",
+        background: "rgba(43,34,24,0.9)",
+        border: "1px solid #5c4a3d",
+        borderRadius: 8,
+        color: "#f2e8d5",
+        font: "inherit",
+        fontSize: 12,
+        cursor: "pointer",
+      }}
+    >
+      📜 Quests
+      {claimable ? (
+        <span
+          style={{
+            position: "absolute",
+            top: -4,
+            right: -4,
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: "#34d399",
+            border: "1px solid #0b140f",
+          }}
+        />
+      ) : null}
+    </button>
+  );
+}
 
 /** React overlay on top of the Phaser canvas. Pointer events stay on the game. */
 export function Hud() {
@@ -36,9 +79,11 @@ export function Hud() {
           <Online />
           <EnergyBar />
         </div>
-        <div style={{ position: "absolute", top: 12, right: 12 }}>
+        <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <QuestButton />
           <Fps />
         </div>
+        <QuestTracker />
         <Toast />
         <div style={{ position: "absolute", bottom: 12, left: 12 }}>
           <Chat />
@@ -57,9 +102,10 @@ export function Hud() {
             textAlign: "right",
           }}
         >
-          WASD move · Space use/claim/chop · 🔨 Build (click to place, Esc exit) · I bag · Enter chat
+          WASD move · Space use/claim/chop · 🔨 Build · Q quests · I bag · Enter chat
         </div>
         <PlotPanel />
+        <QuestLog />
         <Inventory />
       </div>
     </>

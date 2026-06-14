@@ -8,6 +8,7 @@ import { TILE_SIZE } from "./constants";
 import { useBuildStore } from "../stores/build";
 import { useFarmStore } from "../stores/farm";
 import { useMpStore } from "../stores/mp";
+import { useQuestUi } from "../stores/questUi";
 import { useWorldStore } from "../stores/world";
 
 const ERRORS: Record<string, string> = {
@@ -59,6 +60,7 @@ export class TownController {
   private nodeShadows = new Map<string, Phaser.GameObjects.Image>();
   private useKey: Phaser.Input.Keyboard.Key;
   private escKey: Phaser.Input.Keyboard.Key;
+  private questKey: Phaser.Input.Keyboard.Key;
   private pollAcc = 0;
   private busy = false;
 
@@ -70,6 +72,10 @@ export class TownController {
   private onRemove = ({ id }: { id: string }): void => {
     const characterId = useFarmStore.getState().characterId;
     if (characterId) void this.send({ action: "remove", characterId, structureId: id });
+  };
+  private onQuestClaim = ({ id }: { id: string }): void => {
+    const characterId = useFarmStore.getState().characterId;
+    if (characterId) void this.send({ action: "claimQuest", characterId, questId: id });
   };
   private onPointerDown = (pointer: Phaser.Input.Pointer): void => this.handleClick(pointer);
 
@@ -87,10 +93,12 @@ export class TownController {
     if (!kb) throw new Error("keyboard unavailable");
     this.useKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.escKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.questKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
 
     gameBus.on("plotClaim", this.onClaim);
     gameBus.on("structureUpgrade", this.onUpgrade);
     gameBus.on("structureRemove", this.onRemove);
+    gameBus.on("questClaim", this.onQuestClaim);
     scene.input.on("pointerdown", this.onPointerDown);
 
     const st = useWorldStore.getState().world;
@@ -102,6 +110,7 @@ export class TownController {
     gameBus.off("plotClaim", this.onClaim);
     gameBus.off("structureUpgrade", this.onUpgrade);
     gameBus.off("structureRemove", this.onRemove);
+    gameBus.off("questClaim", this.onQuestClaim);
     this.scene.input.off("pointerdown", this.onPointerDown);
     this.outlines.destroy();
     this.uiGfx.destroy();
@@ -120,6 +129,10 @@ export class TownController {
       const b = useBuildStore.getState();
       if (b.buildMode) b.setBuildMode(false);
       else if (b.selectedStructureId) b.selectStructure(null);
+      else useQuestUi.getState().set(false);
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.questKey) && !useMpStore.getState().typing) {
+      useQuestUi.getState().toggle();
     }
     this.updateProximity();
     this.drawUiOverlay();
